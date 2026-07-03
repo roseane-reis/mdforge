@@ -1,0 +1,67 @@
+# Sample configuration for the mdforge water-model evaluation module.
+#
+#   python -m mdforge.liquid.evaluate --config examples/water.yaml
+#   # (or, to auto-discover legs from a campaign run directory:)
+#   python -m mdforge.liquid.evaluate --config examples/water.yaml --campaign /path/to/run_dir
+#
+# All paths are resolved relative to THIS file's directory unless absolute.
+# Copy this file next to your run and edit the paths + model name.
+
+model:
+  name: MyWaterModel        # free text — appears in the report; never hardcoded in code
+  engine: openmm             # informational (hoomd / openmm / tinker / ...)
+
+species: water              # selects the reference dataset + species profile
+
+# Analysis is valid only at ambient conditions; a state guard enforces this
+# (pass --no-state-guard to override, but the experimental references won't apply).
+state:
+  temperature_K: 298.15
+  pressure_atm: 1.0
+
+system:
+  n_molecules: 500          # optional — else inferred from the topology (n_atoms / atoms_per_molecule)
+  molar_mass_g_mol: 18.01528
+  atoms_per_molecule: 3
+  charges_e: {O: -0.834, H: 0.417}   # physical partial charges (used for the dielectric)
+  molecular_polarizability: null    # Å³ — set to enable a Clausius–Mossotti eps_inf; else eps_inf = 1
+  gas_pe_per_molecule: 0.0          # ΔHvap gas reference (0 for a rigid fixed-charge model;
+                                    #   set the gas-phase per-molecule PE for a flexible model)
+
+topology:
+  pdb: topology/liquid.pdb  # a PDB (O,H,H per residue) ... or use a Tinker XYZ:
+  # txyz: topology/liquid.xyz
+
+# One entry per simulation leg. Provide a trajectory and/or a per-frame log.
+#   - ensemble NPT  -> density, ΔHvap, Cp, thermal expansion, compressibility, pressure
+#   - ensemble NVT  -> structure/diffusion/dielectric at the (usually experimental) density; Cv
+#   - ensemble NVE  -> structure/diffusion + energy-conservation drift
+# A single NPT trajectory alone is fine — everything computable from it is produced.
+legs:
+  - name: npt
+    ensemble: NPT
+    trajectory: npt/npt.gsd   # .gsd (HOOMD rigid body) or .dcd (CHARMM/NAMD; needs the topology)
+    log: npt/npt.npy          # optional per-frame thermo log (.npy or .csv)
+    equil_frac: 0.50          # fraction of leading frames discarded (default 0.5 NPT / 0.2 NVT,NVE)
+  - name: nvt
+    ensemble: NVT
+    trajectory: nvt/nvt.gsd
+    log: nvt/nvt.npy
+    equil_frac: 0.20
+
+analysis:
+  rdf: {r_max: 8.0, n_bins: 200, stride: 3}
+  structure_stride: 8         # frame stride for the KD-tree metrics (tetrahedral q, H-bonds)
+  diffusion:
+    dt_ps: 5.0                # time between trajectory frames (ps); else inferred from the log
+    fit_lo: 0.2               # MSD fit window (fraction of max lag)
+    fit_hi: 0.6
+    finite_size_correction: true
+    reference_viscosity_pa_s: 8.9e-4   # literature water viscosity for the Yeh–Hummer correction
+  hbond: {r_oo: 3.5, angle_deg: 30.0}  # Luzar–Chandler geometric criterion
+  seed: 1                     # bootstrap seed (reproducible error bars)
+
+output:
+  dir: analysis              # results.json, properties_table.{csv,md}, REPORT.md, plots
+  formats: [json, csv, md]
+  plots: true

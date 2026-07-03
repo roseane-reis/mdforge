@@ -1,0 +1,45 @@
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+*.so
+*.pyd
+
+# test + coverage
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# lint
+.ruff_cache/
+.mypy_cache/
+
+# environments
+.venv/
+env/
+venv/
+
+# data / large binaries (keep source code only)
+*.joblib
+*.h5
+*.hdf5
+*.pkl
+*.pickle
+*.npy
+*.npz
+
+# editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*.DS_Store
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
+

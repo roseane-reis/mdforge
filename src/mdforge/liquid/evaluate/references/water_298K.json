@@ -1,0 +1,168 @@
+{
+  "schema_version": 1,
+  "liquid": "water",
+  "state_point": {
+    "temperature_K": 298.15,
+    "pressure_atm": 1.0,
+    "note": "Ambient liquid water. Izadi & Onufriev Table III is quoted at 298.16 K / 1 bar; treated as the 298.15 K / 1 atm reference point."
+  },
+  "aggregation_defaults": {
+    "rule": "weighted_score",
+    "core_properties": ["density", "delta_hvap", "dielectric", "self_diffusion", "cp", "kappa_T", "alpha_T", "gOO_peak_r"],
+    "excellent_tolerance_pct": 1.0,
+    "within_uncertainty_is_excellent": true,
+    "weights": {"excellent": 2.0, "good": 1.0, "bad": 0.0},
+    "label_thresholds": {"excellent": 1.5, "good": 0.5}
+  },
+  "citations": {
+    "izadi2016": {
+      "text": "Izadi, S.; Onufriev, A. V. Accuracy limit of rigid 3-point water models. J. Chem. Phys. 145, 074501 (2016).",
+      "doi": "10.1063/1.4960175",
+      "tables": {"bulk": "Table III (298.16 K, 1 bar)"}
+    },
+    "rackers2021": {
+      "text": "Rackers, J. A.; Silva, R. R.; Wang, Z.; Ponder, J. W. Polarizable Water Potential Derived from a Model Electron Density. J. Chem. Theory Comput. 17, 7056-7084 (2021).",
+      "doi": "10.1021/acs.jctc.1c00628",
+      "tables": {"bulk": "Table 4"}
+    },
+    "soper2000": {
+      "text": "Soper, A. K. The radial distribution functions of water and ice. Chem. Phys. 258, 121-137 (2000).",
+      "doi": "10.1016/S0301-0104(00)00179-8",
+      "tables": {"structure": "EPSR g_OO / g_OH / g_HH at 298 K"}
+    }
+  },
+  "properties": {
+    "density": {
+      "label": "Density",
+      "unit": "g/cm3",
+      "computed_unit": "g/cm3",
+      "rated": true,
+      "direction": "two_sided",
+      "experimental": {"value": 0.99705, "uncertainty": 0.001, "source": "izadi2016"},
+      "baseline_models": {"tip3p": 0.980, "spce": 0.994, "tip3pfb": 0.995, "opc3": 0.996, "hippo": 0.99649},
+      "correction": null,
+      "note": "NPT equilibrium density."
+    },
+    "delta_hvap": {
+      "label": "Enthalpy of vaporization",
+      "unit": "kcal/mol",
+      "computed_unit": "kcal/mol",
+      "rated": true,
+      "direction": "two_sided",
+      "experimental": {"value": 10.51, "uncertainty": 0.05, "source": "izadi2016"},
+      "baseline_models": {"tip3p": 10.26, "spce": 10.43, "tip3pfb": 10.71, "opc3": 10.73, "hippo": 10.47},
+      "correction": "Classical (no nuclear-quantum correction). For a rigid fixed-charge model this is the apparent cohesive energy -PE/molecule + RT (gas-phase PE = 0).",
+      "note": null
+    },
+    "dielectric": {
+      "label": "Static dielectric constant",
+      "unit": "dimensionless",
+      "computed_unit": "dimensionless",
+      "rated": true,
+      "direction": "two_sided",
+      "experimental": {"value": 78.409, "uncertainty": 1.0, "source": "izadi2016"},
+      "baseline_models": {"tip3p": 94.0, "spce": 68.0, "tip3pfb": 81.3, "opc3": 78.0, "hippo": 76.878},
+      "correction": null,
+      "note": "Requires physical partial charges; cell-dipole fluctuation estimate."
+    },
+    "self_diffusion": {
+      "label": "Self-diffusion coefficient",
+      "unit": "1e-5 cm2/s",
+      "computed_unit": "1e-5 cm2/s",
+      "rated": true,
+      "direction": "two_sided",
+      "experimental": {"value": 2.299, "uncertainty": 0.05, "source": "izadi2016"},
+      "baseline_models": {"tip3p": 5.5, "spce": 2.54, "tip3pfb": 2.28, "opc3": 2.30, "hippo": 2.557},
+      "correction": "Compare the Yeh-Hummer finite-size-corrected D (D_corr), not the raw PBC value.",
+      "note": null
+    },
+    "cp": {
+      "label": "Isobaric heat capacity Cp",
+      "unit": "cal/mol/k",
+      "computed_unit": "cal/mol/k",
+      "rated": true,
+      "direction": "two_sided",
+      "experimental": {"value": 18.0, "uncertainty": 0.05, "source": "izadi2016"},
+      "baseline_models": {"tip3p": 18.74, "spce": 20.7, "tip3pfb": 19.1, "opc3": 18.54},
+      "correction": "Classical enthalpy-fluctuation estimate (no nuclear-quantum correction).",
+      "note": null
+    },
+    "kappa_T": {
+      "label": "Isothermal compressibility",
+      "unit": "1e-6/bar",
+      "computed_unit": "1e-6/bar",
+      "rated": true,
+      "direction": "two_sided",
+      "experimental": {"value": 45.25, "uncertainty": 1.0, "source": "izadi2016"},
+      "baseline_models": {"tip3p": 57.4, "spce": 46.1, "tip3pfb": 44.5, "opc3": 46.0},
+      "correction": null,
+      "note": "1e-6/bar equals 1e-11/Pa numerically."
+    },
+    "alpha_T": {
+      "label": "Thermal expansion coefficient",
+      "unit": "1e-4/k",
+      "computed_unit": "1e-4/k",
+      "rated": true,
+      "direction": "two_sided",
+      "experimental": {"value": 2.57, "uncertainty": 0.1, "source": "izadi2016"},
+      "baseline_models": {"tip3p": 0.2, "spce": 5.0, "tip3pfb": 4.1, "opc3": 4.3},
+      "correction": null,
+      "note": null
+    },
+    "gOO_peak_r": {
+      "label": "O-O RDF first-peak position",
+      "unit": "angstrom",
+      "computed_unit": "angstrom",
+      "rated": true,
+      "direction": "two_sided",
+      "experimental": {"value": 2.8, "uncertainty": 0.05, "source": "soper2000"},
+      "baseline_models": {"tip3p": 2.77, "spce": 2.75, "tip3pfb": 2.755, "opc3": 2.755, "hippo": 2.785},
+      "correction": null,
+      "note": "Structure compared at the experimental density (NVT leg) when available."
+    },
+    "gOO_peak_g": {
+      "label": "O-O RDF first-peak height",
+      "unit": "dimensionless",
+      "computed_unit": "dimensionless",
+      "rated": false,
+      "direction": "two_sided",
+      "experimental": {"value": 2.75, "uncertainty": 0.1, "source": "soper2000"},
+      "baseline_models": {"hippo": 3.0},
+      "correction": null,
+      "note": "No TIP3P baseline reported; unrated."
+    },
+    "tetrahedral_q": {
+      "label": "Tetrahedral order parameter q",
+      "unit": "dimensionless",
+      "computed_unit": "dimensionless",
+      "rated": false,
+      "direction": "two_sided",
+      "experimental": {"value": 0.576, "uncertainty": null, "source": "soper2000"},
+      "baseline_models": {},
+      "correction": null,
+      "note": "Errington-Debenedetti q for ambient liquid water; no TIP3P baseline reported; unrated."
+    },
+    "hbonds_per_molecule": {
+      "label": "Hydrogen bonds per molecule",
+      "unit": "dimensionless",
+      "computed_unit": "dimensionless",
+      "rated": false,
+      "direction": "two_sided",
+      "experimental": {"value": 3.6, "uncertainty": 0.2, "source": "soper2000"},
+      "baseline_models": {},
+      "correction": null,
+      "note": "Luzar-Chandler geometric criterion; no TIP3P baseline reported; unrated."
+    },
+    "coordination_number": {
+      "label": "O-O coordination number",
+      "unit": "dimensionless",
+      "computed_unit": "dimensionless",
+      "rated": false,
+      "direction": "two_sided",
+      "experimental": {"value": 4.5, "uncertainty": 0.3, "source": "soper2000"},
+      "baseline_models": {},
+      "correction": null,
+      "note": "Integrated to the first g_OO minimum; no TIP3P baseline reported; unrated."
+    }
+  }
+}
