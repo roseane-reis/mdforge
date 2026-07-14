@@ -25,22 +25,33 @@ def _import_pyplot():
     return plt
 
 
-def plot_running_average(series, dt_ps: float = 1.0, *, equil: int = 0, label: str = "", ax=None):
-    """Plot a per-frame observable and its cumulative running average vs. time."""
+def plot_running_average(series, dt_ps: float = 1.0, *, equil: int = 0, label: str = "",
+                         legend: bool = True, t=None, ax=None):
+    """Plot a per-frame observable and its cumulative running average vs. time.
+
+    The observable name is shown on the y-axis. Pass an explicit ``t`` (time in
+    ps per frame) to use the trajectory's real clock — e.g. a continuation run
+    whose log starts partway through; otherwise the axis is ``arange(n) * dt_ps``
+    starting at 0. Pass ``legend=False`` to suppress the per-axes legend (e.g.
+    when a single shared legend is drawn elsewhere); the "raw"/"running avg" line
+    labels are still set so the caller can build one.
+    """
     plt = _import_pyplot()
     series = np.asarray(series, dtype=float)
-    t = np.arange(len(series)) * dt_ps
+    t = np.arange(len(series)) * dt_ps if t is None else np.asarray(t, dtype=float)
     running = np.cumsum(series) / np.arange(1, len(series) + 1)
 
     if ax is None:
         _, ax = plt.subplots()
-    ax.plot(t, series, alpha=0.35, lw=0.8, label=f"{label} (raw)" if label else "raw")
-    ax.plot(t, running, lw=2.0, label=f"{label} (running avg)" if label else "running avg")
+    ax.plot(t, series, alpha=0.35, lw=0.8, label="raw")
+    ax.plot(t, running, lw=2.0, label="running avg")
     if equil:
-        ax.axvline(equil * dt_ps, ls="--", color="k", alpha=0.5, label="equil")
+        ax.axvline(t[equil] if equil < len(t) else t[-1],
+                   ls="--", color="k", alpha=0.5, label="equil")
     ax.set_xlabel("time (ps)")
     ax.set_ylabel(label or "observable")
-    ax.legend()
+    if legend:
+        ax.legend()
     return ax
 
 

@@ -33,8 +33,19 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-state-guard", action="store_true",
                    help="Skip the 298.15 K / 1 atm state check (results not comparable).")
     p.add_argument("--no-plots", action="store_true", help="Do not render plots.")
+    p.add_argument("--timeseries", action="store_true",
+                   help="Retain per-leg thermodynamic timeseries and plot them "
+                        "(density, T, P, energies, volume) with running averages. "
+                        "Off by default; also settable via output.timeseries in the config.")
     p.add_argument("--max-frames", type=int, default=None,
-                   help="Cap frames per trajectory (fast smoke test).")
+                   help="Cap frames per trajectory, after striding (fast smoke test).")
+    p.add_argument("--stride", type=int, default=1,
+                   help="Read every Nth trajectory frame (DCD only); spans a long "
+                        "run with few frames. Diffusion's time axis rescales automatically.")
+    p.add_argument("--r-max", type=float, default=None,
+                   help="Override analysis.rdf.r_max (Å); must be ≤ half the smallest box edge.")
+    p.add_argument("--rdf-bins", type=int, default=None,
+                   help="Override analysis.rdf.n_bins (RDF histogram bins).")
     return p
 
 
@@ -49,6 +60,10 @@ def _load_config(args) -> EvalConfig:
         config.legs = legs_from_campaign(args.campaign)
         config.base_dir = Path(".")  # discovered leg paths are absolute
         config.validate()
+    if args.r_max is not None:
+        config.analysis.rdf.r_max = args.r_max
+    if args.rdf_bins is not None:
+        config.analysis.rdf.n_bins = args.rdf_bins
     return config
 
 
@@ -58,7 +73,8 @@ def main(argv: list[str] | None = None) -> int:
 
     out_dir = args.out_dir or config.resolve(config.output.dir)
     result = run_evaluation(config, enforce_state=not args.no_state_guard,
-                            max_frames=args.max_frames)
+                            max_frames=args.max_frames, stride=args.stride,
+                            record_timeseries=(args.timeseries or config.output.timeseries))
     artifacts = build_evaluation_report(
         result, outdir=out_dir, baseline_model=args.baseline,
         make_plots=(not args.no_plots and config.output.plots),

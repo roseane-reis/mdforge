@@ -53,6 +53,7 @@ class EvalResult:
     structure: dict = field(default_factory=dict)    # {leg: {...}}
     diffusion: dict = field(default_factory=dict)    # {leg: {...}}
     dielectric: dict = field(default_factory=dict)   # {leg: {...}}
+    series: dict = field(default_factory=dict)        # {leg: {dt_ps, equil, columns}}
     rdf_exp: dict = field(default_factory=dict)
     scoring_inputs: dict = field(default_factory=dict)          # key -> (value, unit)
     scoring_uncertainties: dict = field(default_factory=dict)   # key -> float
@@ -73,6 +74,7 @@ class EvalResult:
         return clean({
             "meta": self.meta, "thermo": self.thermo, "structure": self.structure,
             "diffusion": self.diffusion, "dielectric": self.dielectric,
+            "series": self.series,
             "rdf_exp": self.rdf_exp,
             "scoring_inputs": {k: list(v) for k, v in self.scoring_inputs.items()},
             "scoring_sources": self.scoring_sources, "warnings": self.warnings,
@@ -83,13 +85,72 @@ class EvalResult:
 # Per-leg compute
 # ---------------------------------------------------------------------------
 
-def _first_minimum(r: np.ndarray, g: np.ndarray, after: float) -> float:
-    m = r > after
-    rr, gg = r[m], g[m]
-    for i in range(1, len(gg) - 1):
-        if gg[i] <= gg[i - 1] and gg[i] <= gg[i + 1]:
-            return float(rr[i])
-    return float(after + 1.0)
+def _first_minimum(r: np.ndarray, g: np.ndarray,
+                   *, lo: float = 3.0, hi: float = 3.7, smooth: int = 5) -> tuple[float, float]:
+    """Robust O–O first-shell minimum: the deepest point of a lightly-smoothed
+    g(r) within the physical first-minimum window ``[lo, hi]`` Å (water O–O first
+    minimum ≈ 3.3 Å).
+
+    Taking the global minimum inside a fixed physical bracket — rather than the
+    *first local* minimum after the peak — is robust to the spurious noise dips
+    on the peak's descending flank that otherwise collapse the coordination
+    number on short/noisy RDFs, and to unstructured RDFs with no clear first
+    shell (which fooled the old detector into walking outward).
+
+    Returns ``(r_min, g_min)`` — the minimum's radius and the smoothed g there.
+    A ``g_min`` well above ~1 signals a poorly-formed first shell (short/noisy or
+    unstructured RDF), i.e. an unreliable coordination number.
+    """
+    r = np.asarray(r, dtype=float)
+    g = np.asarray(g, dtype=float)
+    gs = (np.convolve(g, np.ones(smooth) / smooth, mode="same")
+          if smooth > 1 and len(g) >= smooth else g)
+    mask = (r >= lo) & (r <= hi)
+    if not np.any(mask):
+        return float(0.5 * (lo + hi)), float("nan")
+    rw, gw = r[mask], gs[mask]
+    i = int(np.argmin(gw))
+    return float(rw[i]), float(gw[i])
+
+
+# Per-frame log columns retained for the optional per-leg timeseries (raw key ->
+# axis label); only those present in a given log are kept.
+_SERIES_COLUMNS = (
+    ("density_gcc", "density (g/cm³)"),
+    ("temp_K", "temperature (K)"),
+    ("pressure_atm", "pressure (atm)"),
+    ("e_total", "total energy (kcal/mol)"),
+    ("pe", "potential energy (kcal/mol)"),
+    ("volume_ang3", "volume (Å³)"),
+)
+
+
+def _collect_series(leg: LegData) -> dict | None:
+    """Per-frame thermodynamic timeseries for the optional per-leg plots/JSON.
+
+    Reads whichever of :data:`_SERIES_COLUMNS` the leg's log carries. The time
+    step is taken from a ``time_ps`` column when present, else the trajectory's.
+    """
+    raw = leg.raw_columns
+    if not raw:
+        return None
+    cols = {label: np.asarray(raw[key], dtype=float).tolist()
+            for key, label in _SERIES_COLUMNS if key in raw}
+    if not cols:
+        return None
+    n = len(next(iter(cols.values())))
+    t_ps = None
+    if "time_ps" in raw and len(raw["time_ps"]) == n:
+        t = np.asarray(raw["time_ps"], dtype=float)
+        t_ps = t.tolist()
+        dt_ps = float(np.median(np.diff(t))) if n > 1 else 1.0
+    else:
+        dt_ps = float(leg.traj.dt_ps) if (leg.traj and leg.traj.dt_ps) else 1.0
+    return {
+        "ensemble": leg.ensemble, "n_frames": int(n),
+        "equil": int(leg.equil_frames(n)), "dt_ps": dt_ps,
+        "t_ps": t_ps, "columns": cols,
+    }
 
 
 def _compute_thermo(leg: LegData, config: EvalConfig, n_molecules: int) -> dict | None:
@@ -192,16 +253,25 @@ def _compute_structure(leg: LegData, config: EvalConfig, n_molecules: int) -> di
     r_max, n_bins = knobs.rdf.r_max, knobs.rdf.n_bins
 
     r, gOO = rdf(oxy, box, frames=sel, r_max=r_max, n_bins=n_bins)
-    _, gOH = rdf(oxy, box, positions_b=hyd, mol_a=leg.mol_o, mol_b=leg.mol_h,
-                 frames=sel, r_max=r_max, n_bins=n_bins)
-    _, gHH = rdf(hyd, box, mol_a=leg.mol_h, frames=sel, r_max=r_max, n_bins=n_bins)
+    # g_OH / g_HH keep intramolecular pairs (the rigid covalent O–H and H–H
+    # distances) so the partials show the same short-range peaks as the
+    # experimental reference. For a rigid model those peaks carry no information,
+    # but they make the plotted partials directly comparable. These two partials
+    # are plotted only — never scored — so including them changes no metric.
+    _, gOH = rdf(oxy, box, positions_b=hyd, frames=sel, r_max=r_max, n_bins=n_bins)
+    _, gHH = rdf(hyd, box, frames=sel, r_max=r_max, n_bins=n_bins)
 
     V = float(np.mean(leg.volume[eq:])) if leg.volume is not None else float(
         np.prod(box[eq:].mean(axis=0)))
     ndens_O = len(leg.o_idx) / V
-    r_min = _first_minimum(r, gOO, after=2.5)
-    coord = coordination_number(r, gOO, ndens_O, r_min)
     ipk = int(np.argmax(gOO[r > 2.0]) + np.searchsorted(r, 2.0))
+    r_min, g_min = _first_minimum(r, gOO)
+    coord = coordination_number(r, gOO, ndens_O, r_min)
+    if not (g_min == g_min) or g_min > 1.0:   # NaN (empty window) or weak dip
+        leg.warnings.append(
+            f"{leg.name}: weak g_OO first-shell minimum (g≈{g_min:.2f} at "
+            f"{r_min:.2f} Å); coordination number may be unreliable "
+            "(short or noisy RDF — try a longer trajectory)")
     q, q_mean = tetrahedral_order(oxy, box, frames=sel_s)
     hb, hb_info = hydrogen_bonds(oxy, hyd, box, frames=sel_s,
                                  r_oo=knobs.hbond.r_oo, angle_deg=knobs.hbond.angle_deg)
@@ -236,6 +306,9 @@ def _compute_diffusion(leg: LegData, config: EvalConfig) -> dict | None:
     if not dt_ps:
         leg.warnings.append(f"{leg.name}: no dt_ps for diffusion; set analysis.diffusion.dt_ps")
         return None
+    # dt_ps is the spacing of *saved* frames; read-time striding widened the gap
+    # between the frames actually loaded, so scale the MSD time axis to match.
+    dt_ps *= leg.frame_stride
     u = unwrap_com(leg.com[eq:], leg.box[eq:])
     m = msd(u)
     fit = self_diffusion(m, dt_ps, fit_lo=dk.fit_lo, fit_hi=dk.fit_hi)
@@ -273,26 +346,68 @@ def _cell_dipole(leg: LegData, profile: WaterProfile, eq: int) -> np.ndarray:
     return mu.sum(axis=1), mu               # M(t) (T,3), per-molecule mu (T,n_mol,3)
 
 
+_DIPOLE_COLS = ("dipole_x", "dipole_y", "dipole_z")
+
+
 def _compute_dielectric(leg: LegData, config: EvalConfig, profile: WaterProfile) -> dict | None:
-    if leg.atoms is None or leg.box is None or leg.volume is None:
+    """Static dielectric ε₀ from cell-dipole fluctuations.
+
+    The dipole series M(t) is sourced flexibly (:func:`dielectric_constant` only
+    needs M in **Debye** and a per-frame volume, so it is agnostic to the model):
+
+    - **engine dipole** — when the log carries a per-frame cell dipole (Debye)
+      under ``dipole_{x,y,z}`` (e.g. from a Tinker ``analyze`` log via the
+      pre-converter). This includes induced dipoles, so it is the correct source
+      for **polarizable** models (HIPPO/AMOEBA).
+    - **point-charge dipole** — otherwise M = Σ qᵢ rᵢ from coordinates + charges
+      (:func:`_cell_dipole`, e·Å → converted to Debye). Complete for
+      **non-polarizable** fixed-charge models; approximate for polarizable ones
+      (it omits the induced part).
+
+    ε_∞ comes from the molecular polarizability (Clausius–Mossotti) when given,
+    else 1.
+    """
+    raw = leg.raw_columns
+    mu = None
+    if all(c in raw for c in _DIPOLE_COLS) and "volume_ang3" in raw:
+        # engine-reported total cell dipole (Debye), volume from the same log
+        Md = np.column_stack([np.asarray(raw[c], dtype=float) for c in _DIPOLE_COLS])
+        vol_all = np.asarray(raw["volume_ang3"], dtype=float)
+        n = min(len(Md), len(vol_all))
+        eq = leg.equil_frames(n)
+        if eq >= n:
+            return None
+        M, vol = Md[eq:n], vol_all[eq:n]
+        source = "engine_dipole"
+    elif leg.atoms is not None and leg.box is not None and leg.volume is not None:
+        n = leg.atoms.shape[0]
+        eq = leg.equil_frames(n)
+        if eq >= n:
+            return None
+        M_eA, mu = _cell_dipole(leg, profile, eq)
+        M = M_eA * _E_ANG_TO_DEBYE          # e·Å → Debye (kernel expects Debye)
+        vol = leg.volume[eq:]
+        source = "point_charge"
+    else:
         return None
-    n = leg.atoms.shape[0]
-    eq = leg.equil_frames(n)
-    if eq >= n:
-        return None
-    M, mu = _cell_dipole(leg, profile, eq)
+
     eps_inf = 1.0
     if config.system.molecular_polarizability:
-        vmol = float(np.mean(leg.volume[eq:])) / leg.n_molecules
+        vmol = float(np.mean(vol)) / leg.n_molecules
         eps_inf = clausius_mossotti_eps_inf(config.system.molecular_polarizability, vmol)
-    eps = dielectric_constant(M, leg.volume[eq:], config.state.temperature_K, eps_inf=eps_inf)
-    mu_mag = float(np.mean(np.linalg.norm(mu, axis=-1)))
-    return {
+    eps = dielectric_constant(M, vol, config.state.temperature_K, eps_inf=eps_inf)
+    out = {
         "ensemble": leg.ensemble, "n_frames": int(n), "equil": int(eq),
         "epsilon_0": float(eps), "eps_inf": float(eps_inf),
-        "mu_molecule_eA": mu_mag, "mu_molecule_debye": mu_mag * _E_ANG_TO_DEBYE,
-        "net_charge_e": float(profile.net_charge()),
+        "dipole_source": source, "net_charge_e": float(profile.net_charge()),
     }
+    if mu is not None:
+        mu_mag = float(np.mean(np.linalg.norm(mu, axis=-1)))
+        out["mu_molecule_eA"] = mu_mag
+        out["mu_molecule_debye"] = mu_mag * _E_ANG_TO_DEBYE
+    else:
+        out["cell_dipole_debye_mean"] = float(np.mean(np.linalg.norm(M, axis=1)))
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -368,8 +483,18 @@ def _select_scoring_inputs(result: EvalResult, legs_meta: dict, config: EvalConf
 # ---------------------------------------------------------------------------
 
 def run_evaluation(config: EvalConfig, *, enforce_state: bool = True,
-                   max_frames: int | None = None) -> EvalResult:
-    """Run the full evaluation and return an :class:`EvalResult`."""
+                   max_frames: int | None = None, stride: int = 1,
+                   record_timeseries: bool = False) -> EvalResult:
+    """Run the full evaluation and return an :class:`EvalResult`.
+
+    Set ``record_timeseries`` to retain each leg's per-frame thermodynamic
+    series (density, T, P, energies, volume) under :attr:`EvalResult.series`
+    for the optional per-leg timeseries plots.
+
+    ``stride`` keeps every ``stride``-th trajectory frame at read time (DCD only)
+    so a long run can be spanned cheaply; the diffusion time axis rescales
+    automatically.
+    """
     if enforce_state:
         state_guard(config.state)
 
@@ -388,8 +513,8 @@ def run_evaluation(config: EvalConfig, *, enforce_state: bool = True,
     legs_meta = {leg.name: leg.ensemble.upper() for leg in config.legs}
 
     for leg_spec in config.legs:
-        leg = ingest_leg(leg_spec, config, profile, n_molecules, max_frames=max_frames)
-        result.warnings.extend(leg.warnings)
+        leg = ingest_leg(leg_spec, config, profile, n_molecules,
+                         max_frames=max_frames, stride=stride)
 
         thermo = _compute_thermo(leg, config, n_molecules)
         if thermo:
@@ -403,6 +528,12 @@ def run_evaluation(config: EvalConfig, *, enforce_state: bool = True,
         dielectric = _compute_dielectric(leg, config, profile)
         if dielectric:
             result.dielectric[leg.name] = dielectric
+        if record_timeseries:
+            series = _collect_series(leg)
+            if series:
+                result.series[leg.name] = series
+        # collect warnings after compute so per-property warnings surface too
+        result.warnings.extend(leg.warnings)
 
     # experimental partial RDFs for the report (298 K / 1 atm only)
     try:

@@ -101,7 +101,7 @@ def parse_dynamics_log(path: str | Path) -> dict:
     ``Lattice Lengths`` report lines. Returns a dict of numpy arrays (any key
     may be empty if absent from the log).
     """
-    pe, ke, dens, vol = [], [], [], []
+    pe, ke, dens, vol, tps = [], [], [], [], []
     for line in _read_lines(path):
         s = line.split()
         if "Current Potential" in line:
@@ -112,6 +112,10 @@ def parse_dynamics_log(path: str | Path) -> dict:
             v = _to_float(s[2]) if len(s) > 2 else None
             if v is not None:
                 ke.append(v)
+        elif "Current Time" in line:
+            v = _to_float(s[2]) if len(s) > 2 else None
+            if v is not None:
+                tps.append(v)
         elif "Density" in line:
             v = _to_float(s[1]) if len(s) > 1 else None
             if v is not None:
@@ -125,6 +129,7 @@ def parse_dynamics_log(path: str | Path) -> dict:
         "kinetic_energy": np.array(ke, dtype=float),
         "density": np.array(dens, dtype=float),
         "volume": np.array(vol, dtype=float),
+        "time_ps": np.array(tps, dtype=float),
     }
 
 
@@ -141,10 +146,14 @@ def parse_analyze_log(path: str | Path) -> dict:
     """
     pe, dip, vol = [], [], []
     mass: float | None = None
+    n_atoms: int | None = None
     for line in _read_lines(path):
         s = line.split()
         if "Total System Mass" in line:
             mass = _to_float(s[-1])
+        elif "Number of Atoms" in line:
+            v = _to_float(s[-1])
+            n_atoms = int(v) if v is not None else None
         elif "Total Potential Energy : " in line and len(s) > 4:
             v = _to_float(s[4])
             if v is not None:
@@ -162,6 +171,7 @@ def parse_analyze_log(path: str | Path) -> dict:
         "dipole": np.array(dip, dtype=float) if dip else np.empty((0, 3)),
         "volume": np.array(vol, dtype=float),
         "mass": mass,
+        "n_atoms": n_atoms,
     }
 
 

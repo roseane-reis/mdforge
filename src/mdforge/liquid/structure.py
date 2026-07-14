@@ -98,48 +98,58 @@ def rdf(
     if len(sel) == 0:
         raise ValueError("no frames selected")
 
+    half_min = 0.5 * float(L[sel].min())
     if r_max is None:
-        r_max = 0.5 * float(L[sel].min())
+        r_max = half_min
+    elif r_max > half_min * (1 + 1e-9):
+        raise ValueError(
+            f"r_max ({r_max:g} Å) exceeds half the smallest box edge "
+            f"({half_min:.3f} Å); g(r) is only defined within the minimum-image "
+            "limit. Lower r_max (or use a larger box)."
+        )
     edges = np.linspace(0.0, r_max, n_bins + 1)
     shell_vol = (4.0 / 3.0) * np.pi * (edges[1:] ** 3 - edges[:-1] ** 3)
     centers = 0.5 * (edges[1:] + edges[:-1])
 
-    # Intra-molecular exclusion masks (computed once; geometry is fixed per run).
-    if cross:
-        keep_cross = (
-            (ma[:, None] != mb[None, :]).ravel()
-            if ma is not None and mb is not None else None
-        )
-    else:
-        i_self, j_self = np.triu_indices(pos.shape[1], k=1)
-        keep_self = ma[i_self] != ma[j_self] if ma is not None else None
+    # Only pairs within r_max contribute to the histogram, so a periodic
+    # neighbour search (cell list via cKDTree) finds them in ~O(N) instead of
+    # building the full O(N²) distance matrix — the ideal-gas normalisation
+    # still uses the full pair count, so g(r) is unchanged. Requires r_max ≤
+    # min(L)/2 (already the validity limit of the minimum-image convention).
+    from scipy.spatial import cKDTree
 
     g_accum = np.zeros(n_bins, dtype=float)
     used = 0
     for t in sel:
         Lt = L[t]
-        a = pos[t]
         V = float(Lt[0] * Lt[1] * Lt[2])
+        a = _wrap_into_box(pos[t], Lt)                      # cKDTree needs [0, L)
+        tree_a = cKDTree(a, boxsize=Lt)
         if cross:
-            b = pos_b[t]
-            d = a[:, None, :] - b[None, :, :]              # (Na, Nb, 3)
-            d -= Lt * np.round(d / Lt)
-            r = np.sqrt(np.einsum("ijk,ijk->ij", d, d)).ravel()
-            if keep_cross is not None:
-                r = r[keep_cross]
-            n_pairs = a.shape[0] * b.shape[0]
-            norm_dens = n_pairs / V
+            b = _wrap_into_box(pos_b[t], Lt)
+            m = tree_a.sparse_distance_matrix(
+                cKDTree(b, boxsize=Lt), r_max, output_type="ndarray")
+            ii, jj, r = m["i"], m["j"], m["v"]              # periodic distances
+            if ma is not None and mb is not None:
+                keep = ma[ii] != mb[jj]
+                r = r[keep]
+            n_pairs = pos[t].shape[0] * pos_b[t].shape[0]
         else:
-            d = a[i_self] - a[j_self]                       # (P, 3)
-            d -= Lt * np.round(d / Lt)
-            r = np.sqrt(np.einsum("ij,ij->i", d, d))
-            if keep_self is not None:
-                r = r[keep_self]
-            n_pairs = a.shape[0] * (a.shape[0] - 1) / 2.0
-            norm_dens = n_pairs / V
+            pairs = tree_a.query_pairs(r_max, output_type="ndarray")
+            if pairs.size:
+                ii, jj = pairs[:, 0], pairs[:, 1]
+                if ma is not None:
+                    keep = ma[ii] != ma[jj]
+                    ii, jj = ii[keep], jj[keep]
+                d = a[ii] - a[jj]
+                d -= Lt * np.round(d / Lt)                  # minimum image
+                r = np.sqrt(np.einsum("ij,ij->i", d, d))
+            else:
+                r = np.empty(0, dtype=float)
+            n_pairs = pos[t].shape[0] * (pos[t].shape[0] - 1) / 2.0
 
         hist, _ = np.histogram(r, bins=edges)
-        ideal = norm_dens * shell_vol
+        ideal = (n_pairs / V) * shell_vol
         with np.errstate(divide="ignore", invalid="ignore"):
             g_accum += np.where(ideal > 0, hist / ideal, 0.0)
         used += 1
@@ -372,6 +382,12 @@ def hydrogen_bonds(oxygens, hydrogens, box, *, frames=None,
     taken as ``hydrogens[2 m : 2 m + 2]`` for oxygen ``m`` (the contiguous layout
     produced by :func:`mdforge.formats.gsd.reconstruct_atoms` for 3-site water).
 
+    Each bond is counted from **both partners** — once for the donor molecule and
+    once for the acceptor — so the returned per-molecule count follows the usual
+    experimental convention (donor + acceptor participations; ≈ 3.6 for ambient
+    water). Equivalently it is twice the number of distinct O–O bonds per
+    molecule.
+
     oxygens:
         ``(T, No, 3)`` oxygen positions (Å).
     hydrogens:
@@ -423,7 +439,10 @@ def hydrogen_bonds(oxygens, hydrogens, box, *, frames=None,
                 if float(oh @ oo) >= cos_cut:
                     count += 1
                     break                               # one bond per donor pair
-        per_frame.append(count / No)
+        # `count` is the number of distinct (directed) donor bonds; report the
+        # donor+acceptor participation count per molecule (2×), matching the
+        # experimental reference convention.
+        per_frame.append(2.0 * count / No)
     per_frame = np.asarray(per_frame, dtype=float)
     return float(per_frame.mean()), {
         "per_frame": per_frame.tolist(), "r_oo": r_oo, "angle_deg": angle_deg,

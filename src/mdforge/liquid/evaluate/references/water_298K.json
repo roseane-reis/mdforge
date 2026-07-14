@@ -151,7 +151,7 @@
       "experimental": {"value": 3.6, "uncertainty": 0.2, "source": "soper2000"},
       "baseline_models": {},
       "correction": null,
-      "note": "Luzar-Chandler geometric criterion; no TIP3P baseline reported; unrated."
+      "note": "Luzar-Chandler geometric criterion, donor+acceptor convention (each bond counted from both partners); no TIP3P baseline reported; unrated."
     },
     "coordination_number": {
       "label": "O-O coordination number",

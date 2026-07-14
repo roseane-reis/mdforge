@@ -130,6 +130,12 @@ def test_rdf_rejects_tilted_box():
         rdf(pos, np.array([10, 10, 10, 0.5, 0, 0], dtype=float))
 
 
+def test_rdf_rejects_r_max_beyond_half_box():
+    pos = np.zeros((1, 4, 3))
+    with pytest.raises(ValueError, match="minimum-image"):
+        rdf(pos, np.array([20.0, 20.0, 20.0]), r_max=12.0)   # > L/2 = 10
+
+
 def test_coordination_number_flat_gr():
     # g(r)=1 everywhere -> n(r) = (4/3) pi r^3 rho
     r = np.linspace(0, 10, 500)

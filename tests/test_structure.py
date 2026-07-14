@@ -58,7 +58,8 @@ def test_tetrahedral_order_perfect():
 
 def test_hydrogen_bonds_single_dimer():
     # One donor->acceptor bond: donor H points along the O-O axis (angle ~0),
-    # the acceptor's hydrogens point away, so exactly one H-bond exists -> 0.5/mol.
+    # the acceptor's hydrogens point away. The bond is counted from both partners
+    # (donor + acceptor), so each of the 2 molecules participates in one bond -> 1.0/mol.
     Od = np.array([10.0, 10.0, 10.0])
     Oa = np.array([10.0, 10.0, 12.8])       # O-O = 2.8 A < 3.5
     O = np.array([Od, Oa])[None]            # (1, 2, 3)
@@ -70,7 +71,7 @@ def test_hydrogen_bonds_single_dimer():
     ])[None]                                 # (1, 4, 3)
     box = np.array([50.0, 50.0, 50.0])
     hb, info = hydrogen_bonds(O, H, box)
-    assert hb == pytest.approx(0.5, abs=1e-9)
+    assert hb == pytest.approx(1.0, abs=1e-9)
     assert info["r_oo"] == 3.5
 
 

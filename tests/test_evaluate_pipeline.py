@@ -82,6 +82,86 @@ def test_degrade_trajectory_only_no_log(synth_run):
     assert "density" not in res.scoring_inputs       # no thermo log
 
 
+def test_dielectric_prefers_engine_dipole():
+    import numpy as np
+
+    from mdforge.liquid.evaluate.config import EvalConfig
+    from mdforge.liquid.evaluate.ingest import LegData
+    from mdforge.liquid.evaluate.pipeline import _compute_dielectric
+    from mdforge.liquid.evaluate.profiles.water import get_profile
+
+    cfg = EvalConfig.from_dict({
+        "system": {"n_molecules": 100, "charges_e": {"O": -0.8, "H": 0.4}},
+        "topology": {"pdb": "x.pdb"},
+        "legs": [{"name": "npt", "ensemble": "NPT", "log": "l.npy"}],
+    })
+    profile = get_profile("water", charges_e={"O": -0.8, "H": 0.4})
+
+    rng = np.random.default_rng(0)
+    nfr = 400
+    M = rng.normal(0.0, 40.0, (nfr, 3))          # Debye
+    vol = np.full(nfr, 30000.0)
+    raw = {"dipole_x": M[:, 0], "dipole_y": M[:, 1], "dipole_z": M[:, 2],
+           "volume_ang3": vol}
+    leg = LegData(name="npt", ensemble="NPT", equil_frac=0.1, source="log-only",
+                  n_molecules=100, raw_columns=raw)
+
+    out = _compute_dielectric(leg, cfg, profile)
+    assert out["dipole_source"] == "engine_dipole"
+    assert out["epsilon_0"] > 1.0
+
+    # variance drives ε: doubling the dipole quadruples (ε − ε∞)
+    raw2 = {k: (2 * v if k.startswith("dipole") else v) for k, v in raw.items()}
+    leg2 = LegData(name="npt", ensemble="NPT", equil_frac=0.1, source="log-only",
+                   n_molecules=100, raw_columns=raw2)
+    out2 = _compute_dielectric(leg2, cfg, profile)
+    assert (out2["epsilon_0"] - 1.0) == pytest.approx(4.0 * (out["epsilon_0"] - 1.0), rel=1e-6)
+
+
+def test_first_minimum_robust_to_noise_dip():
+    import numpy as np
+
+    from mdforge.liquid.evaluate.pipeline import _first_minimum
+
+    r = np.linspace(0.0, 8.0, 400)
+    g = (1.0
+         + 2.0 * np.exp(-((r - 2.8) / 0.18) ** 2)      # first peak ~2.8
+         - 0.6 * np.exp(-((r - 3.4) / 0.30) ** 2)      # first-minimum well ~3.4
+         + 0.4 * np.exp(-((r - 4.5) / 0.45) ** 2))     # second peak ~4.5
+    g[r < 2.4] = 0.0
+
+    r_min, g_min = _first_minimum(r, g)
+    assert 3.2 <= r_min <= 3.6 and g_min < 1.0          # true first minimum ~3.4
+
+    # a shallow spurious dip on the descending flank (higher than the true well)
+    # must NOT be picked — the global min in the physical window is still ~3.4
+    g_noisy = g.copy()
+    g_noisy[(r > 3.05) & (r < 3.15)] -= 0.4
+    r_min_n, _ = _first_minimum(r, g_noisy)
+    assert 3.2 <= r_min_n <= 3.6
+
+
+def test_record_timeseries_populates_series(synth_run):
+    cfg = _cfg(synth_run, [{"name": "npt", "ensemble": "NPT",
+                            "trajectory": str(synth_run / "npt.gsd"),
+                            "log": str(synth_run / "npt.npy")}])
+    off = run_evaluation(cfg)
+    assert off.series == {}                          # opt-in: nothing by default
+
+    res = run_evaluation(cfg, record_timeseries=True)
+    assert set(res.series) == {"npt"}
+    s = res.series["npt"]
+    assert s["dt_ps"] == pytest.approx(5.0)          # from the log's time_ps
+    assert s["ensemble"] == "NPT"
+    assert s["t_ps"][0] == pytest.approx(0.0)        # real clock retained (starts at 0 here)
+    assert len(s["t_ps"]) == s["n_frames"]
+    for label in ("density (g/cm³)", "temperature (K)", "pressure (atm)"):
+        assert label in s["columns"]
+        assert len(s["columns"][label]) == s["n_frames"]
+    assert 0 <= s["equil"] < s["n_frames"]
+    assert res.to_json_dict()["series"]["npt"]["columns"]  # serialisable
+
+
 def test_state_guard_blocks_off_state(synth_run):
     cfg = _cfg(synth_run, [{"name": "npt", "ensemble": "NPT",
                             "trajectory": str(synth_run / "npt.gsd")}],

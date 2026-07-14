@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from ...qm.report import save_metrics_csv
+from ..plots import plot_running_average
 from .pipeline import EvalResult
 from .reference import ReferenceSet, load_reference_set
 from .score import ModelRating, score_all
@@ -140,21 +141,60 @@ def _make_plots(result: EvalResult, outdir: Path) -> dict:
         return {}
     figs: dict[str, str] = {}
     struct = _primary_structure(result) or None
-    rr = result.rdf_exp.get("gOO")
-    if struct and rr:
-        fig, ax = plt.subplots(figsize=(6, 4))
-        ax.plot(struct["r"], struct["g_OO"], label=f"model ({struct['ensemble']})")
-        ax.plot(rr["r"], rr["g"], "k--", label="experiment (Soper 2000)")
-        ax.set_xlim(0, 8)
-        ax.set_xlabel("r (Å)")
-        ax.set_ylabel("g$_{OO}$(r)")
-        ax.legend()
-        ax.set_title("O–O radial distribution function")
-        p = outdir / "rdf_gOO.png"
+    # partial RDFs: (model key, experimental key, subscript, title). All panels
+    # share a fixed 0–3 y-range so the inter-molecular structure is comparable
+    # across partials; the rigid intramolecular O–H / H–H spikes clip at the top.
+    partials = [("g_OO", "gOO", "OO", "O–O"),
+                ("g_OH", "gOH", "OH", "O–H"),
+                ("g_HH", "gHH", "HH", "H–H")]
+    if struct and any(mkey in struct for mkey, *_ in partials):
+        fig, axes = plt.subplots(1, 3, figsize=(15, 4.2), sharey=True)
+        for ax, (mkey, ekey, sub, title) in zip(axes, partials):
+            if mkey in struct:
+                ax.plot(struct["r"], struct[mkey], label=f"model ({struct['ensemble']})")
+            rr = result.rdf_exp.get(ekey)
+            if rr:
+                ax.plot(rr["r"], rr["g"], "k--", label="experiment (Soper 2000)")
+            ax.set_xlim(0, 8)
+            ax.set_ylim(0, 3)
+            ax.set_xlabel("r (Å)")
+            ax.set_ylabel(f"g$_{{{sub}}}$(r)")
+            ax.set_title(f"{title} radial distribution function")
+        axes[0].legend()
+        fig.tight_layout()
+        p = outdir / "rdf_partials.png"
+        fig.savefig(p, dpi=150)
+        plt.close(fig)
+        figs["rdf_partials"] = str(p)
+
+    # optional per-leg thermodynamic timeseries (present only when the run was
+    # invoked with record_timeseries / output.timeseries)
+    for leg_name, s in getattr(result, "series", {}).items():
+        cols = s.get("columns") or {}
+        if not cols:
+            continue
+        n_panels = len(cols)
+        ncols = 2 if n_panels > 1 else 1
+        nrows = -(-n_panels // ncols)
+        fig, axes = plt.subplots(nrows, ncols, figsize=(5.5 * ncols, 2.6 * nrows),
+                                 squeeze=False)
+        axes_list = list(axes.flat)
+        for ax, (label, series) in zip(axes_list, cols.items()):
+            # per-panel legend suppressed; one shared legend is drawn below
+            plot_running_average(series, dt_ps=s.get("dt_ps", 1.0),
+                                 equil=s.get("equil", 0), label=label, legend=False,
+                                 t=s.get("t_ps"), ax=ax)
+        for ax in axes_list[n_panels:]:
+            ax.axis("off")
+        # single shared legend (raw / running avg [/ equil]) from the first panel's lines
+        handles, labels = axes_list[0].get_legend_handles_labels()
+        fig.legend(handles, labels, loc="upper right", frameon=False)
+        fig.suptitle(f"{leg_name} ({s.get('ensemble', '')}) — thermodynamic timeseries")
+        p = outdir / f"timeseries_{leg_name}.png"
         fig.tight_layout()
         fig.savefig(p, dpi=150)
         plt.close(fig)
-        figs["rdf_gOO"] = str(p)
+        figs[f"timeseries_{leg_name}"] = str(p)
     return figs
 
 

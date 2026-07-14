@@ -146,6 +146,7 @@ class OutputSpec:
     dir: str = "analysis"
     formats: list[str] = field(default_factory=lambda: ["json", "csv", "md"])
     plots: bool = True
+    timeseries: bool = False   # retain per-frame thermo series + emit per-leg plots
 
 
 @dataclass

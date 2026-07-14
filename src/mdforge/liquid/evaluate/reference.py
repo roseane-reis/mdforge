@@ -175,6 +175,12 @@ def load_experimental_rdf(temperature_K: float = 298.15, pressure_atm: float = 1
         with resources.as_file(resources.files(_PKG).joinpath(f"298_1_{site}.txt")) as p:
             d = np.loadtxt(p, skiprows=4)
         r, g = d[:, 1], d[:, 2]
+        # Soper's tables end with a terminator row (r=0, g=0). Keep only the
+        # leading block where r increases so a plotted curve doesn't wrap from
+        # the last real point back to the origin (spurious diagonal artifact).
+        keep = np.ones(len(r), dtype=bool)
+        keep[1:] = r[1:] > r[:-1]
+        r, g = r[keep], g[keep]
         after = 2.3 if site == "gOO" else 1.5
         peak_r, peak_g = _first_peak(r, g, after)
         out[site] = {"r": r.tolist(), "g": g.tolist(), "peak_r": peak_r, "peak_g": peak_g}

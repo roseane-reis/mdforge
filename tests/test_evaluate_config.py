@@ -33,6 +33,12 @@ def test_from_dict_defaults():
     assert cfg.system.gas_pe_per_molecule == 0.0
 
 
+def test_output_timeseries_flag():
+    assert EvalConfig.from_dict(_min_config()).output.timeseries is False
+    cfg = EvalConfig.from_dict(_min_config(output={"timeseries": True}))
+    assert cfg.output.timeseries is True
+
+
 def test_default_equil_frac_by_ensemble():
     cfg = EvalConfig.from_dict(_min_config(legs=[
         {"name": "npt", "ensemble": "NPT", "trajectory": "a.gsd"},
@@ -91,6 +97,24 @@ def test_from_yaml(tmp_path):
     cfg = EvalConfig.from_yaml(p)
     assert cfg.model.name == "M"
     assert cfg.base_dir == tmp_path
+
+
+def test_cli_overrides_rdf_knobs(tmp_path):
+    pytest.importorskip("yaml")
+    import yaml
+
+    from mdforge.liquid.evaluate.__main__ import _build_parser, _load_config
+
+    cfg_path = tmp_path / "c.yaml"
+    cfg_path.write_text(yaml.safe_dump(_min_config(analysis={"rdf": {"r_max": 8.0, "n_bins": 200}})))
+
+    base = _load_config(_build_parser().parse_args(["--config", str(cfg_path)]))
+    assert base.analysis.rdf.r_max == 8.0 and base.analysis.rdf.n_bins == 200
+
+    over = _load_config(_build_parser().parse_args(
+        ["--config", str(cfg_path), "--r-max", "6.5", "--rdf-bins", "130"]))
+    assert over.analysis.rdf.r_max == 6.5
+    assert over.analysis.rdf.n_bins == 130
 
 
 def test_state_guard_pass():

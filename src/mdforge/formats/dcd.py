@@ -26,6 +26,7 @@ DCD file.
 
 from __future__ import annotations
 
+import mmap
 import struct
 from dataclasses import dataclass
 from pathlib import Path
@@ -77,7 +78,8 @@ def _angle_from_slot(x: float) -> float:
     return float(x)
 
 
-def read_dcd(path: str | Path, *, max_frames: int | None = None) -> DCDTrajectory:
+def read_dcd(path: str | Path, *, max_frames: int | None = None,
+             stride: int = 1) -> DCDTrajectory:
     """Read a DCD trajectory into a :class:`DCDTrajectory`.
 
     Parameters
@@ -85,65 +87,98 @@ def read_dcd(path: str | Path, *, max_frames: int | None = None) -> DCDTrajector
     path:
         DCD file path.
     max_frames:
-        Read at most this many frames (default: all present).
+        Read at most this many *kept* frames (after striding; default: all).
+    stride:
+        Keep every ``stride``-th frame (default 1 = every frame). Skipped frames
+        are stepped over by byte arithmetic — their coordinates are never paged
+        in — so sampling e.g. every 100th frame of a multi-GB trajectory is cheap.
+        Use it to span a whole long run with a few hundred frames.
     """
-    data = Path(path).read_bytes()
-    bo = _detect_endianness(data)
-    i4 = bo + "i"
-    pos = 0
+    if stride < 1:
+        raise ValueError("stride must be >= 1")
+    path = Path(path)
+    with open(path, "rb") as fh:
+        data = mmap.mmap(fh.fileno(), 0, access=mmap.ACCESS_READ)
+        try:
+            return _read_dcd_mmap(data, path, max_frames, stride)
+        finally:
+            data.close()
 
-    def read_record() -> bytes:
-        nonlocal pos
+
+def _read_dcd_mmap(data, path: Path, max_frames: int | None, stride: int = 1) -> DCDTrajectory:
+    bo = _detect_endianness(data[:4])
+    i4 = bo + "i"
+    size = len(data)
+
+    def read_record(pos: int):
+        """Return ``(payload, next_pos)``, or ``(None, pos)`` at EOF/truncation."""
+        if pos + 4 > size:
+            return None, pos
         (n,) = struct.unpack_from(i4, data, pos)
-        pos += 4
-        payload = data[pos:pos + n]
-        pos += n
-        (n2,) = struct.unpack_from(i4, data, pos)
-        pos += 4
+        if n < 0 or pos + 8 + n > size:
+            return None, pos
+        payload = data[pos + 4:pos + 4 + n]
+        (n2,) = struct.unpack_from(i4, data, pos + 4 + n)
         if n2 != n:
-            raise ValueError(f"corrupt DCD record ({n} != {n2}) at byte {pos}")
-        return payload
+            return None, pos
+        return payload, pos + 8 + n
 
     # --- header ---------------------------------------------------------
-    header = read_record()
-    if header[:4] != b"CORD":
+    header, pos = read_record(0)
+    if header is None or header[:4] != b"CORD":
         raise ValueError("not a coordinate DCD (missing 'CORD' magic)")
     icntrl = struct.unpack(bo + "20i", header[4:84])
     nset = icntrl[0]
-    charmm = icntrl[19] != 0
     has_cell = icntrl[10] != 0
-    # DELTA is a float32 for CHARMM (word 9), a float64 otherwise (words 9-10).
-    if charmm:
-        (delta,) = struct.unpack_from(bo + "f", header, 4 + 9 * 4)
-    else:
-        (delta,) = struct.unpack_from(bo + "d", header, 4 + 9 * 4)
 
     # --- title (consumed but unused) ------------------------------------
-    read_record()
+    _, pos = read_record(pos)
 
     # --- natom ----------------------------------------------------------
-    natom_rec = read_record()
+    natom_rec, pos = read_record(pos)
+    if natom_rec is None:
+        raise ValueError(f"truncated DCD {path} (no NATOM record)")
     (natom,) = struct.unpack_from(i4, natom_rec, 0)
 
     f4 = np.dtype(bo + "f4")
-    n_want = nset if max_frames is None else min(nset, max_frames)
+    # NSET (header frame count) is unreliable for streaming writers (e.g. Tinker9
+    # leaves it 0); when non-positive, read frames until EOF instead of trusting it.
+    if nset > 0:
+        n_want = nset if max_frames is None else min(nset, max_frames)
+    else:
+        n_want = max_frames  # None => read to EOF
 
     coords: list[np.ndarray] = []
     boxes: list[list[float]] = []
-    for _ in range(n_want):
-        if pos >= len(data):
-            break  # file truncated (still-writing run): stop at what we have
+    frame_bytes: int | None = None
+    while (n_want is None or len(coords) < n_want) and pos < size:
+        frame_start = pos
+        cell_vals = None
         if has_cell:
-            cell = struct.unpack(bo + "6d", read_record())
+            rec, pos = read_record(pos)
+            if rec is None or len(rec) < 48:
+                break
+            cell = struct.unpack(bo + "6d", rec[:48])
             a, b, c = cell[0], cell[2], cell[5]
-            gamma = _angle_from_slot(cell[1])
-            beta = _angle_from_slot(cell[3])
-            alpha = _angle_from_slot(cell[4])
-            boxes.append([a, b, c, alpha, beta, gamma])
-        x = np.frombuffer(read_record(), dtype=f4, count=natom)
-        y = np.frombuffer(read_record(), dtype=f4, count=natom)
-        z = np.frombuffer(read_record(), dtype=f4, count=natom)
+            cell_vals = [a, b, c, _angle_from_slot(cell[4]),
+                         _angle_from_slot(cell[3]), _angle_from_slot(cell[1])]
+        xr, pos = read_record(pos)
+        yr, pos = read_record(pos)
+        zr, pos = read_record(pos)
+        if xr is None or yr is None or zr is None:
+            break  # incomplete trailing frame (still-writing run): stop here
+        x = np.frombuffer(xr, dtype=f4, count=natom)
+        y = np.frombuffer(yr, dtype=f4, count=natom)
+        z = np.frombuffer(zr, dtype=f4, count=natom)
         coords.append(np.stack([x, y, z], axis=1).astype(float))
+        if cell_vals is not None:
+            boxes.append(cell_vals)
+        # every frame has identical byte length; skip (stride-1) of them by
+        # pointer arithmetic so their coordinates are never read/paged in.
+        if frame_bytes is None:
+            frame_bytes = pos - frame_start
+        if stride > 1:
+            pos = frame_start + stride * frame_bytes
 
     if not coords:
         raise ValueError(f"DCD trajectory {path} has no coordinate frames")

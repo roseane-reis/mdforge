@@ -98,7 +98,8 @@ def dielectric_constant(dipoles, volume, temperature, eps_inf: float = 1.0, weig
     Parameters
     ----------
     dipoles:
-        ``(T, 3)`` array of total cell dipole (e·Å).
+        ``(T, 3)`` array of total cell dipole in **Debye** (the prefactor is
+        defined for Debye; convert an e·Å dipole with ``× 4.803``).
     volume:
         ``(T,)`` array of cell volume (Å³).
     temperature:

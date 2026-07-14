@@ -63,6 +63,7 @@ class LegData:
     mol_h: np.ndarray | None = None
     charges: np.ndarray | None = None        # (N,) per-atom (e)
     n_molecules: int | None = None
+    frame_stride: int = 1                     # read-time trajectory frame stride
     warnings: list[str] = field(default_factory=list)
 
     @property
@@ -214,8 +215,8 @@ def _mass_weighted_com(atoms: np.ndarray, n_molecules: int, apm: int,
 
 
 def _ingest_dcd(path: Path, profile: WaterProfile, n_molecules: int | None,
-                max_frames: int | None, warnings: list[str]) -> dict:
-    dcd = read_dcd(path, max_frames=max_frames)
+                max_frames: int | None, warnings: list[str], stride: int = 1) -> dict:
+    dcd = read_dcd(path, max_frames=max_frames, stride=stride)
     apm = profile.atoms_per_molecule
     if n_molecules is None:
         n_molecules = dcd.n_atoms // apm
@@ -247,19 +248,29 @@ def _ingest_dcd(path: Path, profile: WaterProfile, n_molecules: int | None,
 # ---------------------------------------------------------------------------
 
 def ingest_leg(leg: LegSpec, config: EvalConfig, profile: WaterProfile,
-               n_molecules: int, *, max_frames: int | None = None) -> LegData:
-    """Ingest one leg's topology/trajectory/log into a :class:`LegData`."""
+               n_molecules: int, *, max_frames: int | None = None,
+               stride: int = 1) -> LegData:
+    """Ingest one leg's topology/trajectory/log into a :class:`LegData`.
+
+    ``stride`` keeps every ``stride``-th trajectory frame at read time (DCD only)
+    so a long run can be spanned by a few hundred frames. It is recorded on the
+    returned :class:`LegData` so downstream time axes (diffusion) can rescale.
+    """
     warnings: list[str] = []
     data = LegData(
         name=leg.name, ensemble=leg.ensemble.upper(),
         equil_frac=leg.resolved_equil_frac(), source="log-only",
-        n_molecules=n_molecules, warnings=warnings,
+        n_molecules=n_molecules, frame_stride=max(1, int(stride)), warnings=warnings,
     )
 
     traj_path = config.resolve(leg.trajectory)
     if traj_path is not None:
         suffix = traj_path.suffix.lower()
         if suffix == ".gsd":
+            if stride > 1:
+                warnings.append(f"{leg.name}: read-time --stride is not supported for "
+                                "GSD yet; reading every frame")
+                data.frame_stride = 1
             try:
                 arrays = _ingest_gsd(traj_path, profile, n_molecules, max_frames)
                 data.source = "gsd"
@@ -268,7 +279,8 @@ def ingest_leg(leg: LegSpec, config: EvalConfig, profile: WaterProfile,
                                 "structure/diffusion/dielectric skipped")
                 arrays = None
         elif suffix == ".dcd":
-            arrays = _ingest_dcd(traj_path, profile, n_molecules, max_frames, warnings)
+            arrays = _ingest_dcd(traj_path, profile, n_molecules, max_frames,
+                                 warnings, stride=stride)
             data.source = "dcd"
         else:
             raise ValueError(f"leg {leg.name!r}: unsupported trajectory {traj_path.name}")

@@ -46,6 +46,50 @@ def test_dcd_max_frames(tmp_path):
     assert read_dcd(p, max_frames=3).n_frames == 3
 
 
+def _labelled(n, natom=3):
+    """n frames whose every coordinate equals the frame index (easy to identify)."""
+    return np.stack([np.full((natom, 3), float(i)) for i in range(n)])
+
+
+def test_dcd_stride(tmp_path):
+    p = write_dcd(_labelled(10), path=tmp_path / "s.dcd")
+    tr = read_dcd(p, stride=2)                       # frames 0,2,4,6,8
+    assert tr.n_frames == 5
+    assert np.allclose([c[0, 0] for c in tr.coordinates], [0, 2, 4, 6, 8])
+
+
+def test_dcd_stride_with_max_frames(tmp_path):
+    p = write_dcd(_labelled(10), path=tmp_path / "sm.dcd")
+    tr = read_dcd(p, stride=2, max_frames=3)          # frames 0,2,4
+    assert tr.n_frames == 3
+    assert np.allclose([c[0, 0] for c in tr.coordinates], [0, 2, 4])
+
+
+def test_dcd_stride_keeps_box_aligned(tmp_path):
+    coords = _labelled(6, natom=2)
+    box = np.stack([[10.0 + i, 10.0 + i, 10.0 + i, 90.0, 90.0, 90.0] for i in range(6)])
+    p = write_dcd(coords, box=box, path=tmp_path / "sb.dcd")
+    tr = read_dcd(p, stride=3)                        # frames 0,3
+    assert tr.n_frames == 2
+    assert np.allclose([c[0, 0] for c in tr.coordinates], [0, 3])
+    assert np.allclose(tr.box[:, 0], [10.0, 13.0])    # box strided with coords
+
+
+def test_dcd_nset_zero_reads_to_eof(tmp_path):
+    # Streaming writers (e.g. Tinker9) leave NSET=0; the reader must still read all.
+    p = write_dcd(_labelled(5), path=tmp_path / "z.dcd")
+    raw = bytearray(p.read_bytes())
+    struct.pack_into("<i", raw, 8, 0)                 # NSET word (after marker + 'CORD')
+    p.write_bytes(raw)
+    assert read_dcd(p).n_frames == 5
+
+
+def test_dcd_stride_must_be_positive(tmp_path):
+    p = write_dcd(_labelled(2), path=tmp_path / "b.dcd")
+    with pytest.raises(ValueError):
+        read_dcd(p, stride=0)
+
+
 def test_dcd_bigendian_marker_rejected(tmp_path):
     # A file whose leading marker is neither 84 (LE) nor 84 (BE) is not a DCD.
     bad = tmp_path / "bad.dcd"

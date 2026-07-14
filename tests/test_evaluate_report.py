@@ -16,9 +16,12 @@ def _fake_result():
     return EvalResult(
         meta={"model": "FakeWater", "temperature_K": 298.15, "pressure_atm": 1.0},
         thermo={"npt": {"ensemble": "NPT"}},
-        structure={"nvt": {"ensemble": "NVT", "r": [1, 2, 3], "g_OO": [0, 1, 2],
+        structure={"nvt": {"ensemble": "NVT", "r": [1, 2, 3],
+                           "g_OO": [0, 1, 2], "g_OH": [0, 2, 1], "g_HH": [0, 1, 1],
                            "gOO_peak_r": 2.06, "gOO_peak_g": 10.0}},
-        rdf_exp={"gOO": {"r": [1, 2, 3], "g": [0, 1, 2], "peak_r": 2.73, "peak_g": 2.75}},
+        rdf_exp={"gOO": {"r": [1, 2, 3], "g": [0, 1, 2], "peak_r": 2.73, "peak_g": 2.75},
+                 "gOH": {"r": [1, 2, 3], "g": [0, 2, 1], "peak_r": 1.0, "peak_g": 12.7},
+                 "gHH": {"r": [1, 2, 3], "g": [0, 1, 1], "peak_r": 1.5, "peak_g": 1.7}},
         scoring_inputs={
             "density": (1.178, "g/cm3"),
             "self_diffusion": (0.28, "1e-5 cm2/s"),
@@ -97,4 +100,28 @@ def test_plots_created_when_requested(tmp_path):
     out = build_evaluation_report(_fake_result(), outdir=tmp_path, make_plots=True,
                                   reference=load_reference_set("water", 298.15))
     assert "figures" in out
-    assert "rdf_gOO" in out["figures"]
+    assert "rdf_partials" in out["figures"]
+
+
+def test_timeseries_plot_emitted_per_leg(tmp_path):
+    pytest.importorskip("matplotlib")
+    result = _fake_result()
+    result.series = {"npt": {
+        "ensemble": "NPT", "n_frames": 5, "equil": 1, "dt_ps": 5.0,
+        "columns": {
+            "density (g/cm³)": [1.0, 1.01, 0.99, 1.0, 1.0],
+            "temperature (K)": [298, 299, 297, 298, 298],
+        },
+    }}
+    out = build_evaluation_report(result, outdir=tmp_path, make_plots=True,
+                                  reference=load_reference_set("water", 298.15))
+    assert "timeseries_npt" in out["figures"]
+    assert (tmp_path / "timeseries_npt.png").is_file()
+
+
+def test_no_timeseries_plot_without_series(tmp_path):
+    pytest.importorskip("matplotlib")
+    out = build_evaluation_report(_fake_result(), outdir=tmp_path, make_plots=True,
+                                  reference=load_reference_set("water", 298.15))
+    assert not any(k.startswith("timeseries_") for k in out["figures"])
+    assert not list(tmp_path.glob("timeseries_*.png"))
