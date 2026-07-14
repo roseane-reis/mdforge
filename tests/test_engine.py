@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import importlib.util
 import os
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -110,12 +111,12 @@ class TestRegistry:
 
 class TestLocalRunner:
     def test_run_echo(self, tmp_path):
-        res = LocalRunner().run_in(tmp_path, ["python", "-c", "print('hello')"])
+        res = LocalRunner().run_in(tmp_path, [sys.executable, "-c", "print('hello')"])
         assert res.returncode == 0
         assert "hello" in res.stdout
 
     def test_nonzero_returncode(self, tmp_path):
-        res = LocalRunner().run_in(tmp_path, ["python", "-c", "import sys; sys.exit(3)"])
+        res = LocalRunner().run_in(tmp_path, [sys.executable, "-c", "import sys; sys.exit(3)"])
         assert res.returncode == 3
 
 
