@@ -112,7 +112,7 @@ def _report_markdown(result: EvalResult, ref: ReferenceSet, rating: ModelRating,
               f"- Model g_OO first peak: {_fmt(struct.get('gOO_peak_r'))} Å, "
               f"height {_fmt(struct.get('gOO_peak_g'))} "
               f"(from the {struct.get('ensemble')} leg).",
-              f"- Experimental (Soper 2000): {_fmt(rr.get('peak_r'))} Å, "
+              f"- Experimental (Soper 2013): {_fmt(rr.get('peak_r'))} Å, "
               f"height {_fmt(rr.get('peak_g'))}."]
 
     # caveats from warnings + per-property correction notes
@@ -143,7 +143,7 @@ def _make_plots(result: EvalResult, outdir: Path) -> dict:
     struct = _primary_structure(result) or None
     # partial RDFs: (model key, experimental key, subscript, title). All panels
     # share a fixed 0–3 y-range so the inter-molecular structure is comparable
-    # across partials; the rigid intramolecular O–H / H–H spikes clip at the top.
+    # across partials (model and Soper 2013 are both inter-molecular only).
     partials = [("g_OO", "gOO", "OO", "O–O"),
                 ("g_OH", "gOH", "OH", "O–H"),
                 ("g_HH", "gHH", "HH", "H–H")]
@@ -154,7 +154,7 @@ def _make_plots(result: EvalResult, outdir: Path) -> dict:
                 ax.plot(struct["r"], struct[mkey], label=f"model ({struct['ensemble']})")
             rr = result.rdf_exp.get(ekey)
             if rr:
-                ax.plot(rr["r"], rr["g"], "k--", label="experiment (Soper 2000)")
+                ax.plot(rr["r"], rr["g"], "k--", label="experiment (Soper 2013)")
             # second, independent O-O reference (X-ray) — dotted brown
             if ekey == "gOO":
                 sk = getattr(result, "rdf_exp_skinner", {}).get("gOO")
@@ -166,7 +166,10 @@ def _make_plots(result: EvalResult, outdir: Path) -> dict:
             ax.set_xlabel("r (Å)")
             ax.set_ylabel(f"g$_{{{sub}}}$(r)")
             ax.set_title(f"{title} radial distribution function")
-        axes[0].legend()
+        # legend on the middle (O–H) panel, top-right; take handles from the O–O
+        # panel so the O-O-only Skinner curve is included in the legend.
+        handles, labels = axes[0].get_legend_handles_labels()
+        axes[1].legend(handles, labels, loc="upper right")
         fig.tight_layout()
         p = outdir / "rdf_partials.png"
         fig.savefig(p, dpi=150)

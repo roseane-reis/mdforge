@@ -21,13 +21,18 @@ finite-size corrected; g_OO first peak ≈ 2.785 Å, height ≈ 3.0.
 
 ## Structural experimental references (g_OO, q, H-bonds, coordination)
 
-Soper, A. K. *The radial distribution functions of water and ice.* Chem. Phys.
-**258**, 121–137 (2000). DOI: 10.1016/S0301-0104(00)00179-8 — the packaged
-`298_1_g{OO,OH,HH}.txt` partial RDFs (columns `Bin no.  r  g(r)  std`, 4 header
-lines) and the ambient-water structural values: tetrahedral order q ≈ 0.576,
-H-bonds/molecule ≈ 3.6, O–O coordination ≈ 4.5, g_OO peak height ≈ 2.75. These
-structural metrics have **no TIP3P baseline** in the cited papers and are
-therefore reported as `unrated` (they can still earn "excellent" within 1 %).
+The packaged `298_1_g{OO,OH,HH}.txt` partial RDFs (columns `Bin no.  r  g(r)  std`,
+4 header lines) are Soper's **revised** ambient-water RDFs:
+
+Soper, A. K. *The Radial Distribution Functions of Water: Is There Anything We
+Can Say for Sure?* ISRN Physical Chemistry **2013**, 279463 (2013).
+DOI: 10.1155/2013/279463. (g_OO first peak ≈ 2.79 Å, height ≈ 2.50.)
+
+The scalar structural values in `water_298K.json` attributed to this reference —
+g_OO first peak 2.8 Å / height 2.5, tetrahedral order q ≈ 0.576, H-bonds/molecule
+≈ 3.6, O–O coordination ≈ 4.5 — carry `source: "soper2013"`. Except g_OO peak
+position (rated), these have **no TIP3P baseline** and are reported as `unrated`
+(they can still earn "excellent" within 1 %).
 
 ## Second O–O reference (X-ray)
 
@@ -36,7 +41,7 @@ function of ambient water from x-ray diffraction measurements with a wide Q-rang
 J. Chem. Phys. **138**, 074506 (2013); APS high-energy dataset (2014) — the
 packaged `skinner2014_gOO.txt` (same `Bin no.  r  g(r)  std` layout). The
 near-ambient **295.1 K** column (best-quality flowing-stream data) is used;
-g_OO first peak ≈ 2.80 Å, height ≈ 2.57. Plotted alongside Soper (2000) as an
+g_OO first peak ≈ 2.80 Å, height ≈ 2.57. Plotted alongside Soper (2013) as an
 independent experimental O–O curve; not used for scoring.
 
 ## Notes on corrections

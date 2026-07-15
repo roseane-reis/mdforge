@@ -54,7 +54,7 @@ class EvalResult:
     diffusion: dict = field(default_factory=dict)    # {leg: {...}}
     dielectric: dict = field(default_factory=dict)   # {leg: {...}}
     series: dict = field(default_factory=dict)        # {leg: {dt_ps, equil, columns}}
-    rdf_exp: dict = field(default_factory=dict)             # Soper (2000) neutron
+    rdf_exp: dict = field(default_factory=dict)             # Soper (2013) neutron
     rdf_exp_skinner: dict = field(default_factory=dict)     # Skinner (2014) X-ray g_OO
     scoring_inputs: dict = field(default_factory=dict)          # key -> (value, unit)
     scoring_uncertainties: dict = field(default_factory=dict)   # key -> float
@@ -255,13 +255,13 @@ def _compute_structure(leg: LegData, config: EvalConfig, n_molecules: int) -> di
     r_max, n_bins = knobs.rdf.r_max, knobs.rdf.n_bins
 
     r, gOO = rdf(oxy, box, frames=sel, r_max=r_max, n_bins=n_bins)
-    # g_OH / g_HH keep intramolecular pairs (the rigid covalent O–H and H–H
-    # distances) so the partials show the same short-range peaks as the
-    # experimental reference. For a rigid model those peaks carry no information,
-    # but they make the plotted partials directly comparable. These two partials
-    # are plotted only — never scored — so including them changes no metric.
-    _, gOH = rdf(oxy, box, positions_b=hyd, frames=sel, r_max=r_max, n_bins=n_bins)
-    _, gHH = rdf(hyd, box, frames=sel, r_max=r_max, n_bins=n_bins)
+    # g_OH / g_HH exclude intramolecular pairs (same-molecule O–H and H–H) so the
+    # partials are inter-molecular only, matching the Soper (2013) reference —
+    # which carries no covalent/rigid intramolecular peaks. Plotted only, never
+    # scored.
+    _, gOH = rdf(oxy, box, positions_b=hyd, mol_a=leg.mol_o, mol_b=leg.mol_h,
+                 frames=sel, r_max=r_max, n_bins=n_bins)
+    _, gHH = rdf(hyd, box, mol_a=leg.mol_h, frames=sel, r_max=r_max, n_bins=n_bins)
 
     V = float(np.mean(leg.volume[eq:])) if leg.volume is not None else float(
         np.prod(box[eq:].mean(axis=0)))

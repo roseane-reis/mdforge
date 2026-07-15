@@ -25,10 +25,10 @@
       "doi": "10.1021/acs.jctc.1c00628",
       "tables": {"bulk": "Table 4"}
     },
-    "soper2000": {
-      "text": "Soper, A. K. The radial distribution functions of water and ice. Chem. Phys. 258, 121-137 (2000).",
-      "doi": "10.1016/S0301-0104(00)00179-8",
-      "tables": {"structure": "EPSR g_OO / g_OH / g_HH at 298 K"}
+    "soper2013": {
+      "text": "Soper, A. K. The Radial Distribution Functions of Water: Is There Anything We Can Say for Sure? ISRN Physical Chemistry 2013, 279463 (2013).",
+      "doi": "10.1155/2013/279463",
+      "tables": {"structure": "revised EPSR g_OO / g_OH / g_HH at 298 K"}
     }
   },
   "properties": {
@@ -115,7 +115,7 @@
       "computed_unit": "angstrom",
       "rated": true,
       "direction": "two_sided",
-      "experimental": {"value": 2.8, "uncertainty": 0.05, "source": "soper2000"},
+      "experimental": {"value": 2.8, "uncertainty": 0.05, "source": "soper2013"},
       "baseline_models": {"tip3p": 2.77, "spce": 2.75, "tip3pfb": 2.755, "opc3": 2.755, "hippo": 2.785},
       "correction": null,
       "note": "Structure compared at the experimental density (NVT leg) when available."
@@ -126,7 +126,7 @@
       "computed_unit": "dimensionless",
       "rated": false,
       "direction": "two_sided",
-      "experimental": {"value": 2.75, "uncertainty": 0.1, "source": "soper2000"},
+      "experimental": {"value": 2.5, "uncertainty": 0.1, "source": "soper2013"},
       "baseline_models": {"hippo": 3.0},
       "correction": null,
       "note": "No TIP3P baseline reported; unrated."
@@ -137,7 +137,7 @@
       "computed_unit": "dimensionless",
       "rated": false,
       "direction": "two_sided",
-      "experimental": {"value": 0.576, "uncertainty": null, "source": "soper2000"},
+      "experimental": {"value": 0.576, "uncertainty": null, "source": "soper2013"},
       "baseline_models": {},
       "correction": null,
       "note": "Errington-Debenedetti q for ambient liquid water; no TIP3P baseline reported; unrated."
@@ -148,7 +148,7 @@
       "computed_unit": "dimensionless",
       "rated": false,
       "direction": "two_sided",
-      "experimental": {"value": 3.6, "uncertainty": 0.2, "source": "soper2000"},
+      "experimental": {"value": 3.6, "uncertainty": 0.2, "source": "soper2013"},
       "baseline_models": {},
       "correction": null,
       "note": "Luzar-Chandler geometric criterion, donor+acceptor convention (each bond counted from both partners); no TIP3P baseline reported; unrated."
@@ -159,7 +159,7 @@
       "computed_unit": "dimensionless",
       "rated": false,
       "direction": "two_sided",
-      "experimental": {"value": 4.5, "uncertainty": 0.3, "source": "soper2000"},
+      "experimental": {"value": 4.5, "uncertainty": 0.3, "source": "soper2013"},
       "baseline_models": {},
       "correction": null,
       "note": "Integrated to the first g_OO minimum; no TIP3P baseline reported; unrated."

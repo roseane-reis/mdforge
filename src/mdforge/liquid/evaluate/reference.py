@@ -2,8 +2,8 @@
 
 Reference data ships as JSON (stdlib — no YAML needed on the scoring path) under
 ``references/{liquid}_{T}K.json`` and is read via :mod:`importlib.resources`, so
-it works from an installed wheel. The experimental partial RDFs (Soper 2000)
-ship alongside as ``298_1_g{OO,OH,HH}.txt``.
+it works from an installed wheel. The experimental partial RDFs (Soper 2013,
+revised) ship alongside as ``298_1_g{OO,OH,HH}.txt``.
 """
 
 from __future__ import annotations
@@ -159,7 +159,7 @@ def _first_peak(r: np.ndarray, g: np.ndarray, after: float) -> tuple[float, floa
 
 
 def load_experimental_rdf(temperature_K: float = 298.15, pressure_atm: float = 1.0) -> dict:
-    """Load the packaged Soper (2000) experimental partial RDFs.
+    """Load the packaged Soper (2013, revised) experimental partial RDFs.
 
     Returns ``{"gOO"/"gOH"/"gHH": {"r", "g", "peak_r", "peak_g"}}`` (only 298 K /
     1 atm is packaged today). Files are ``Bin no.  r  g(r)  std`` with 4 header
@@ -191,7 +191,7 @@ def load_skinner_rdf(temperature_K: float = 298.15, pressure_atm: float = 1.0) -
     """Load the packaged Skinner & Benmore (2014) X-ray ``g_OO`` reference.
 
     A second, independent experimental O-O RDF (high-energy X-ray, APS) plotted
-    alongside the neutron Soper (2000) reference. Only the near-ambient 295.1 K
+    alongside the neutron Soper (2013) reference. Only the near-ambient 295.1 K
     column is packaged; returns ``{"gOO": {"r", "g", "peak_r", "peak_g"}}``. Same
     ``Bin no.  r  g(r)  std`` 4-header-line layout as the Soper files.
     """
