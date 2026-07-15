@@ -187,7 +187,31 @@ def load_experimental_rdf(temperature_K: float = 298.15, pressure_atm: float = 1
     return out
 
 
+def load_skinner_rdf(temperature_K: float = 298.15, pressure_atm: float = 1.0) -> dict:
+    """Load the packaged Skinner & Benmore (2014) X-ray ``g_OO`` reference.
+
+    A second, independent experimental O-O RDF (high-energy X-ray, APS) plotted
+    alongside the neutron Soper (2000) reference. Only the near-ambient 295.1 K
+    column is packaged; returns ``{"gOO": {"r", "g", "peak_r", "peak_g"}}``. Same
+    ``Bin no.  r  g(r)  std`` 4-header-line layout as the Soper files.
+    """
+    if int(round(temperature_K)) != 298 or int(round(pressure_atm)) != 1:
+        raise FileNotFoundError(
+            f"only the ~298 K / 1 atm Skinner g_OO reference is packaged; got "
+            f"{temperature_K} K / {pressure_atm} atm"
+        )
+    with resources.as_file(resources.files(_PKG).joinpath("skinner2014_gOO.txt")) as p:
+        d = np.loadtxt(p, skiprows=4)
+    r, g = d[:, 1], d[:, 2]
+    keep = np.ones(len(r), dtype=bool)
+    keep[1:] = r[1:] > r[:-1]           # guard against any non-monotonic tail
+    r, g = r[keep], g[keep]
+    peak_r, peak_g = _first_peak(r, g, 2.3)
+    return {"gOO": {"r": r.tolist(), "g": g.tolist(), "peak_r": peak_r, "peak_g": peak_g}}
+
+
 __all__ = [
     "Citation", "PropertyReference", "ReferenceSet",
     "load_reference_set", "available_reference_sets", "load_experimental_rdf",
+    "load_skinner_rdf",
 ]

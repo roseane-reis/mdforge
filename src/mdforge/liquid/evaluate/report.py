@@ -155,6 +155,12 @@ def _make_plots(result: EvalResult, outdir: Path) -> dict:
             rr = result.rdf_exp.get(ekey)
             if rr:
                 ax.plot(rr["r"], rr["g"], "k--", label="experiment (Soper 2000)")
+            # second, independent O-O reference (X-ray) — dotted brown
+            if ekey == "gOO":
+                sk = getattr(result, "rdf_exp_skinner", {}).get("gOO")
+                if sk:
+                    ax.plot(sk["r"], sk["g"], color="brown", linestyle=":", linewidth=1.8,
+                            label="experiment (Skinner 2014, X-ray)")
             ax.set_xlim(0, 8)
             ax.set_ylim(0, 3)
             ax.set_xlabel("r (Å)")

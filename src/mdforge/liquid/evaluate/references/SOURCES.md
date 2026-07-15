@@ -29,6 +29,16 @@ H-bonds/molecule ≈ 3.6, O–O coordination ≈ 4.5, g_OO peak height ≈ 2.75.
 structural metrics have **no TIP3P baseline** in the cited papers and are
 therefore reported as `unrated` (they can still earn "excellent" within 1 %).
 
+## Second O–O reference (X-ray)
+
+Skinner, L. B.; Benmore, C. J.; et al. *Benchmark oxygen-oxygen pair-distribution
+function of ambient water from x-ray diffraction measurements with a wide Q-range.*
+J. Chem. Phys. **138**, 074506 (2013); APS high-energy dataset (2014) — the
+packaged `skinner2014_gOO.txt` (same `Bin no.  r  g(r)  std` layout). The
+near-ambient **295.1 K** column (best-quality flowing-stream data) is used;
+g_OO first peak ≈ 2.80 Å, height ≈ 2.57. Plotted alongside Soper (2000) as an
+independent experimental O–O curve; not used for scoring.
+
 ## Notes on corrections
 
 - **Self-diffusion** must be compared using the Yeh–Hummer finite-size-corrected

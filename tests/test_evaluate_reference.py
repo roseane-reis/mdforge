@@ -10,6 +10,7 @@ from mdforge.liquid.evaluate.reference import (
     available_reference_sets,
     load_experimental_rdf,
     load_reference_set,
+    load_skinner_rdf,
 )
 
 
@@ -78,3 +79,17 @@ def test_experimental_rdf_loads():
     assert set(rdf) == {"gOO", "gOH", "gHH"}
     assert 2.5 < rdf["gOO"]["peak_r"] < 3.0     # O-O first peak near 2.7-2.8 Å
     assert len(rdf["gOO"]["r"]) == len(rdf["gOO"]["g"])
+
+
+def test_skinner_rdf_loads():
+    sk = load_skinner_rdf(298.15, 1.0)
+    assert set(sk) == {"gOO"}                   # X-ray reference is O-O only
+    g = sk["gOO"]
+    assert g["peak_r"] == pytest.approx(2.80, abs=0.1)   # Skinner first peak ~2.80 Å
+    assert g["peak_g"] == pytest.approx(2.57, abs=0.15)  # height ~2.57
+    assert len(g["r"]) == len(g["g"])
+
+
+def test_skinner_rdf_off_state_raises():
+    with pytest.raises(FileNotFoundError):
+        load_skinner_rdf(350.0, 1.0)

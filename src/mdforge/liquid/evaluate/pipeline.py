@@ -38,7 +38,7 @@ from ..transport import msd, self_diffusion, unwrap_com, yeh_hummer_correction
 from .config import EvalConfig, state_guard
 from .ingest import LegData, ingest_leg, water_profile_from_topology
 from .profiles import WaterProfile
-from .reference import load_experimental_rdf
+from .reference import load_experimental_rdf, load_skinner_rdf
 
 _E_ANG_TO_DEBYE = 4.803  # 1 e·Å = 4.803 D
 _AVOGADRO = 6.02214076e23
@@ -54,7 +54,8 @@ class EvalResult:
     diffusion: dict = field(default_factory=dict)    # {leg: {...}}
     dielectric: dict = field(default_factory=dict)   # {leg: {...}}
     series: dict = field(default_factory=dict)        # {leg: {dt_ps, equil, columns}}
-    rdf_exp: dict = field(default_factory=dict)
+    rdf_exp: dict = field(default_factory=dict)             # Soper (2000) neutron
+    rdf_exp_skinner: dict = field(default_factory=dict)     # Skinner (2014) X-ray g_OO
     scoring_inputs: dict = field(default_factory=dict)          # key -> (value, unit)
     scoring_uncertainties: dict = field(default_factory=dict)   # key -> float
     scoring_sources: dict = field(default_factory=dict)         # key -> leg name
@@ -76,6 +77,7 @@ class EvalResult:
             "diffusion": self.diffusion, "dielectric": self.dielectric,
             "series": self.series,
             "rdf_exp": self.rdf_exp,
+            "rdf_exp_skinner": self.rdf_exp_skinner,
             "scoring_inputs": {k: list(v) for k, v in self.scoring_inputs.items()},
             "scoring_sources": self.scoring_sources, "warnings": self.warnings,
         })
@@ -541,6 +543,12 @@ def run_evaluation(config: EvalConfig, *, enforce_state: bool = True,
             config.state.temperature_K, config.state.pressure_atm)
     except FileNotFoundError:
         result.rdf_exp = {}
+    # second, independent O-O reference (Skinner 2014 X-ray), plotted by default
+    try:
+        result.rdf_exp_skinner = load_skinner_rdf(
+            config.state.temperature_K, config.state.pressure_atm)
+    except FileNotFoundError:
+        result.rdf_exp_skinner = {}
 
     _select_scoring_inputs(result, legs_meta, config)
     return result

@@ -22,6 +22,8 @@ def _fake_result():
         rdf_exp={"gOO": {"r": [1, 2, 3], "g": [0, 1, 2], "peak_r": 2.73, "peak_g": 2.75},
                  "gOH": {"r": [1, 2, 3], "g": [0, 2, 1], "peak_r": 1.0, "peak_g": 12.7},
                  "gHH": {"r": [1, 2, 3], "g": [0, 1, 1], "peak_r": 1.5, "peak_g": 1.7}},
+        rdf_exp_skinner={"gOO": {"r": [1, 2, 3], "g": [0, 1.2, 1.8],
+                                 "peak_r": 2.8, "peak_g": 2.57}},
         scoring_inputs={
             "density": (1.178, "g/cm3"),
             "self_diffusion": (0.28, "1e-5 cm2/s"),
