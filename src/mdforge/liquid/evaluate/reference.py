@@ -44,6 +44,7 @@ class PropertyReference:
     note: str | None = None
     unit_aliases: dict = field(default_factory=dict)
     no_baseline_policy: str = "excellent_or_unrated"
+    report_only: bool = False   # show the value but assign no verdict / never grade
 
     def baseline(self, model: str = "tip3p") -> float | None:
         """Baseline value for ``model`` (e.g. the TIP3P bar), or None if absent."""
@@ -119,6 +120,7 @@ def load_reference_set(
             note=p.get("note"),
             unit_aliases=p.get("unit_aliases", {}) or {},
             no_baseline_policy=p.get("no_baseline_policy", "excellent_or_unrated"),
+            report_only=bool(p.get("report_only", False)),
         )
 
     citations = {

@@ -127,9 +127,10 @@
       "rated": false,
       "direction": "two_sided",
       "experimental": {"value": 2.5, "uncertainty": 0.1, "source": "soper2013"},
-      "baseline_models": {"hippo": 3.0},
+      "baseline_models": {},
       "correction": null,
-      "note": "No TIP3P baseline reported; unrated."
+      "report_only": true,
+      "note": "Reported only, never graded: the experimental g_OO peak height is strongly source-dependent (Soper 2000 ~2.75, Soper 2013 ~2.50, Skinner X-ray ~2.57), so there is no defensible bar."
     },
     "tetrahedral_q": {
       "label": "Tetrahedral order parameter q",

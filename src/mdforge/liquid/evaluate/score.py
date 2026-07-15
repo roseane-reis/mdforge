@@ -24,7 +24,7 @@ from typing import Literal
 from .reference import PropertyReference, ReferenceSet
 from .units_liquid import convert
 
-Verdict = Literal["excellent", "good", "bad", "unrated"]
+Verdict = Literal["excellent", "good", "bad", "unrated", "report"]
 
 
 @dataclass(frozen=True)
@@ -91,13 +91,19 @@ def score_property(
             verdict=verdict, reason=reason, rated=ref.rated,
         )
 
+    within_unc = (
+        ref.exp_uncertainty is not None and abs(v - exp) <= ref.exp_uncertainty
+    )
+    # report-only: show the value + deviation, but assign no verdict and never grade
+    # (e.g. the g_OO peak height, whose experimental value is too source-dependent).
+    if ref.report_only:
+        return make("report", "reported only (not graded)",
+                    signed_pct_deviation(v, exp), None, None, within_unc)
+
     if exp == 0:
         return make("unrated", "experimental value is zero", float("nan"), None, None, False)
 
     dev_model = signed_pct_deviation(v, exp)
-    within_unc = (
-        ref.exp_uncertainty is not None and abs(v - exp) <= ref.exp_uncertainty
-    )
 
     if abs(dev_model) <= excellent_tol_pct:
         return make("excellent", f"|dev|={abs(dev_model):.2f}% ≤ {excellent_tol_pct:g}%",
@@ -177,7 +183,7 @@ def score_all(
             excellent_tol_pct=tol, within_uncertainty_is_excellent=within_unc,
         )
 
-    counts = {"excellent": 0, "good": 0, "bad": 0, "unrated": 0}
+    counts = {"excellent": 0, "good": 0, "bad": 0, "unrated": 0, "report": 0}
     for v in per_property.values():
         counts[v.verdict] += 1
 

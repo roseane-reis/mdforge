@@ -93,3 +93,18 @@ def test_skinner_rdf_loads():
 def test_skinner_rdf_off_state_raises():
     with pytest.raises(FileNotFoundError):
         load_skinner_rdf(350.0, 1.0)
+
+
+def test_gOO_peak_g_is_report_only():
+    from mdforge.liquid.evaluate.score import score_all
+
+    ref = load_reference_set("water", 298.15)
+    assert ref.get("gOO_peak_g").report_only is True
+    # scored far from experiment + with a baseline present, yet must NOT be graded
+    r = score_all({"gOO_peak_g": (3.1, None), "density": (0.997, "g/cm3")},
+                  ref, baseline_model="hippo")
+    pv = r.per_property["gOO_peak_g"]
+    assert pv.verdict == "report"                       # not excellent/good/bad
+    assert "gOO_peak_g" not in r.rated_core_keys        # never contributes to the grade
+    assert r.counts["report"] == 1
+    assert r.counts["bad"] == 0
