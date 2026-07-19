@@ -118,6 +118,39 @@ def test_dielectric_prefers_engine_dipole():
     assert (out2["epsilon_0"] - 1.0) == pytest.approx(4.0 * (out["epsilon_0"] - 1.0), rel=1e-6)
 
 
+def test_4site_gsd_end_to_end(tmp_path, make_water_4site_gsd, make_water_pdb, make_hoomd_npy):
+    # A HOOMD 4-site (M-site) rigid-body run: the GSD reconstructs O,H,H,M per
+    # molecule; the PDB topology lists only the 3 real atoms. With
+    # atoms_per_molecule=4 + virtual_sites=[M], structure uses O/H only and the
+    # dielectric includes the M-site (per-molecule dipole ~2.3 D).
+    make_water_4site_gsd(tmp_path / "npt.gsd", n_mol=27, box_L=14.0, n_frames=12)
+    make_water_pdb(tmp_path / "liquid.pdb", n_mol=27, box_L=14.0)   # 3-site, no M
+    make_hoomd_npy(tmp_path / "npt.npy", ensemble="npt", n_molecules=27, box_L=14.0)
+
+    base = {
+        "model": {"name": "msite"},
+        "system": {"n_molecules": 27, "atoms_per_molecule": 4, "virtual_sites": ["M"],
+                   "charges_e": {"O": 0.0, "H": 0.55975, "M": -1.1195}},
+        "topology": {"pdb": str(tmp_path / "liquid.pdb")},
+        "legs": [{"name": "npt", "ensemble": "NPT", "trajectory": str(tmp_path / "npt.gsd"),
+                  "log": str(tmp_path / "npt.npy")}],
+        "analysis": {"rdf": {"r_max": 6.0, "n_bins": 60}, "diffusion": {"dt_ps": 5.0}},
+    }
+    res = run_evaluation(EvalConfig.from_dict(base))
+    st = res.structure["npt"]
+    assert len(st["g_OO"]) == 60 and math.isfinite(st["gOO_peak_r"])
+    di = res.dielectric["npt"]
+    assert di["dipole_source"] == "point_charge"
+    assert di["net_charge_e"] == pytest.approx(0.0, abs=1e-9)
+    assert 2.0 < di["mu_molecule_debye"] < 2.6          # M-site enters the dipole
+
+    # the old 3-site config on this 4-site GSD must be rejected, not silently wrong
+    wrong = {**base, "system": {"n_molecules": 27, "atoms_per_molecule": 3,
+                                "charges_e": {"O": -0.70, "H": 0.35}}}
+    with pytest.raises(ValueError, match="sites per molecule"):
+        run_evaluation(EvalConfig.from_dict(wrong))
+
+
 def test_first_minimum_robust_to_noise_dip():
     import numpy as np
 

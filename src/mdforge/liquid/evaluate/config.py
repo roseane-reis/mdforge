@@ -73,6 +73,11 @@ class SystemSpec:
     molar_mass_g_mol: float = 18.01528
     atoms_per_molecule: int = 3
     charges_e: dict[str, float] | None = None
+    # Massless ghost charge sites for 4-site (M-site) models, e.g. ["M"] for
+    # TIP4P-style water. The per-molecule layout is O, H, H followed by these,
+    # so atoms_per_molecule must equal 3 + len(virtual_sites), and charges_e must
+    # give each ghost site's charge. None/empty ⇒ an ordinary 3-site model.
+    virtual_sites: list[str] | None = None
     molecular_polarizability: float | None = None   # Å³, for eps_inf
     gas_pe_per_molecule: float = 0.0                 # ΔHvap gas reference
 
@@ -224,6 +229,29 @@ class EvalConfig:
             raise EvalConfigError("topology needs at least one of 'pdb' / 'txyz'")
         if self.system.atoms_per_molecule <= 0:
             raise EvalConfigError("system.atoms_per_molecule must be positive")
+        vsites = self.system.virtual_sites
+        if vsites is not None and (
+            not isinstance(vsites, list)
+            or not all(isinstance(s, str) and s.strip() for s in vsites)
+        ):
+            raise EvalConfigError(
+                "system.virtual_sites must be a list of non-empty site-name "
+                "strings (e.g. ['M'] for a 4-site model)"
+            )
+        # A water molecule is O, H, H + one ghost site per virtual_sites entry, so
+        # atoms_per_molecule must equal 3 + len(virtual_sites). Enforce both ways:
+        # a bare atoms_per_molecule != 3 with no virtual_sites is caught here too.
+        n_virtual = len(vsites) if vsites else 0
+        expected = 3 + n_virtual
+        if self.system.atoms_per_molecule != expected:
+            hint = ("set system.virtual_sites to name the ghost site(s)"
+                    if n_virtual == 0
+                    else "adjust system.virtual_sites or atoms_per_molecule")
+            raise EvalConfigError(
+                f"system.atoms_per_molecule={self.system.atoms_per_molecule} does "
+                f"not match a water layout of O, H, H + {n_virtual} ghost site(s) "
+                f"(expected {expected}); {hint}"
+            )
         return self
 
     def resolve(self, path: str | None) -> Path | None:

@@ -509,9 +509,19 @@ def run_evaluation(config: EvalConfig, *, enforce_state: bool = True,
         "n_molecules": n_molecules,
         "molar_mass_g_mol": config.system.molar_mass_g_mol,
         "charges_e": profile.charges_e,
+        "virtual_sites": list(config.system.virtual_sites or []),
         "gas_pe_per_molecule": config.system.gas_pe_per_molecule,
         "legs": [leg.name for leg in config.legs],
     })
+    net_q = profile.net_charge()
+    if abs(net_q) > 1e-3:
+        # A non-neutral molecule makes the point-charge cell dipole M(t)=Σ qᵢrᵢ
+        # origin-dependent, so the dielectric it feeds is physically meaningless.
+        result.warnings.append(
+            f"model molecule net charge is {net_q:+.4f} e (not ~0); the dielectric "
+            "assumes a net-neutral molecule — check system.charges_e (a 4-site "
+            "model needs the ghost-site charge, e.g. M = -2·q_H)"
+        )
     legs_meta = {leg.name: leg.ensemble.upper() for leg in config.legs}
 
     for leg_spec in config.legs:

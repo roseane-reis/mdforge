@@ -117,6 +117,49 @@ def test_cli_overrides_rdf_knobs(tmp_path):
     assert over.analysis.rdf.n_bins == 130
 
 
+def test_virtual_sites_4site_builds_profile():
+    # A parsed 4-site config must build a profile with the M-site massless,
+    # placed last, and net-neutral (not just echo back the stored fields).
+    from mdforge.liquid.evaluate.profiles.water import water_profile
+    cfg = EvalConfig.from_dict(_min_config(system={
+        "n_molecules": 10, "atoms_per_molecule": 4, "virtual_sites": ["M"],
+        "charges_e": {"O": 0.0, "H": 0.52422, "M": -1.04844},
+    }))
+    prof = water_profile(charges_e=cfg.system.charges_e,
+                         atoms_per_molecule=cfg.system.atoms_per_molecule,
+                         virtual_sites=cfg.system.virtual_sites)
+    assert prof.element_order == ("O", "H", "H", "M")
+    assert prof.virtual_local_indices == (3,)
+    assert prof.per_molecule_masses().tolist()[3] == 0.0
+    assert prof.net_charge() == pytest.approx(0.0, abs=1e-9)
+
+
+def test_virtual_sites_apm_mismatch_raises():
+    # virtual_sites=["M"] implies atoms_per_molecule=4; leaving it at 3 is an error
+    with pytest.raises(EvalConfigError):
+        EvalConfig.from_dict(_min_config(system={
+            "n_molecules": 10, "atoms_per_molecule": 3, "virtual_sites": ["M"],
+            "charges_e": {"O": 0.0, "H": 0.52422, "M": -1.04844},
+        }))
+
+
+def test_atoms_per_molecule_without_virtual_sites_raises():
+    # a bare atoms_per_molecule != 3 (no virtual_sites) must fail at config time,
+    # not slip through to a confusing profile-build / ingest error later
+    with pytest.raises(EvalConfigError):
+        EvalConfig.from_dict(_min_config(system={
+            "n_molecules": 10, "atoms_per_molecule": 4,
+            "charges_e": {"O": 0.0, "H": 0.52422}}))
+
+
+def test_virtual_sites_must_be_string_list():
+    with pytest.raises(EvalConfigError):
+        EvalConfig.from_dict(_min_config(system={
+            "n_molecules": 10, "atoms_per_molecule": 4, "virtual_sites": ["M", ""],
+            "charges_e": {"O": 0.0, "H": 0.52422, "M": -1.04844},
+        }))
+
+
 def test_state_guard_pass():
     state_guard(StateSpec(temperature_K=298.15, pressure_atm=1.0))
     state_guard(StateSpec(temperature_K=298.6, pressure_atm=1.3))  # within tol

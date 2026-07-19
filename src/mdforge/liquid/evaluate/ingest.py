@@ -27,7 +27,6 @@ from pathlib import Path
 
 import numpy as np
 
-from ...core.elements import ELEMENT_MASSES
 from ...core.records import Trajectory
 from ...formats.dcd import read_dcd
 from ...formats.gsd import (
@@ -105,26 +104,33 @@ def water_profile_from_topology(config: EvalConfig) -> tuple[WaterProfile, int]:
     """Build the species profile and molecule count from config + topology.
 
     Charges come from ``config.system.charges_e`` when given (physical values),
-    otherwise the profile defaults. The first molecule's elements are validated
-    against the profile (``O, H, H`` for water).
+    otherwise the profile defaults. The first molecule's sites are validated
+    against the profile (``O, H, H`` for 3-site water, ``O, H, H, M`` for a
+    4-site model — see ``config.system.virtual_sites``). The topology may list
+    every site (a Tinker txyz carries the M-site) or only the real atoms (a HOOMD
+    PDB has no M-site — it is reconstructed from the trajectory); ``n_molecules``
+    is derived from whichever layout the topology uses.
     """
     profile = get_profile(
         config.species,
         charges_e=config.system.charges_e,
         molar_mass_g_mol=config.system.molar_mass_g_mol,
+        atoms_per_molecule=config.system.atoms_per_molecule,
+        virtual_sites=config.system.virtual_sites,
     )
-    apm = config.system.atoms_per_molecule
     elements, n_atoms, _ = _topology_elements(config)
-    if len(elements) >= apm:
-        profile.validate_elements(elements[:apm])
+    # The topology's own per-molecule atom count (real-only for a HOOMD PDB, or
+    # all sites for a Tinker txyz) — not necessarily profile.atoms_per_molecule.
+    top_apm = profile.topology_atoms_per_molecule(elements) if elements else \
+        profile.atoms_per_molecule
     n_molecules = config.system.n_molecules
     if n_molecules is None:
-        if n_atoms % apm != 0:
+        if n_atoms % top_apm != 0:
             raise ValueError(
-                f"topology has {n_atoms} atoms, not a multiple of "
-                f"atoms_per_molecule={apm}; set system.n_molecules explicitly"
+                f"topology has {n_atoms} atoms, not a multiple of {top_apm} "
+                f"(atoms per molecule in the topology); set system.n_molecules"
             )
-        n_molecules = n_atoms // apm
+        n_molecules = n_atoms // top_apm
     return profile, int(n_molecules)
 
 
@@ -197,6 +203,15 @@ def _ingest_gsd(path: Path, profile: WaterProfile, n_molecules: int | None,
             f"GSD has {rbt.n_molecules} molecules; config/topology says {n_molecules}"
         )
     atoms = reconstruct_atoms(rbt, geom, wrap_molecules=True)
+    apm = profile.atoms_per_molecule
+    if atoms.shape[1] != n_molecules * apm:
+        recon_apm = atoms.shape[1] // n_molecules
+        raise ValueError(
+            f"GSD reconstructs {recon_apm} sites per molecule (from its rigid-body "
+            f"definition), but atoms_per_molecule={apm}. A 4-site (M-site) model "
+            f"needs system.atoms_per_molecule=4 and system.virtual_sites=[M] (the "
+            f"ghost site is a rigid-body constituent in the GSD)."
+        )
     o_idx, h_idx, mol_o, mol_h, charges = _atom_selection(profile, n_molecules)
     return {
         "atoms": atoms, "com": rbt.com, "box": rbt.box[:, :3].copy(),
@@ -227,7 +242,8 @@ def _ingest_dcd(path: Path, profile: WaterProfile, n_molecules: int | None,
         )
     atoms = dcd.coordinates
     o_idx, h_idx, mol_o, mol_h, charges = _atom_selection(profile, n_molecules)
-    masses_local = np.array([ELEMENT_MASSES[e] for e in profile.element_order], dtype=float)
+    # Ghost (M-site) sites are massless, so they drop out of the centre of mass.
+    masses_local = profile.per_molecule_masses()
     com = _mass_weighted_com(atoms, n_molecules, apm, masses_local)
     box = None
     volume = None

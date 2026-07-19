@@ -27,12 +27,19 @@ from ..core.records import Trajectory
 # Tinker atom-name aliases occasionally seen in box files.
 _TYPE_ALIASES = {"CA": "C", "HA": "H"}
 
+# Massless virtual / ghost sites: the M-site of 4-site water (TIP4P-style) and
+# lone-pair / extra-point sites. They carry charge but no mass, so they contribute
+# nothing to the system mass or centre of mass.
+_MASSLESS_SITES = frozenset({"M", "LP", "EP"})
+
 
 def _mass_of(symbol: str) -> float:
     if symbol in ELEMENT_MASSES:
         return ELEMENT_MASSES[symbol]
     if symbol in _TYPE_ALIASES:
         return ELEMENT_MASSES[_TYPE_ALIASES[symbol]]
+    if symbol in _MASSLESS_SITES:
+        return 0.0
     raise KeyError(f"No mass for atom symbol {symbol!r}")
 
 
